@@ -16,3 +16,8 @@
 - Safari、Firefox、Edge 及真實手機。
 - 低光提示、多人提示只以邏輯／模擬測試，未用真鏡頭驗證。
 - 音效（headless 無法聽）。
+
+## 上線驗證（2026-11-14）
+
+- GitHub Pages https://lphky.github.io/sport/ 建置完成；index、程式、wasm（application/wasm）及模型均回應 200。
+- 以網上版本＋真人相片模擬鏡頭實測：本地模型載入、校準、倒數後 45 秒內數到 8 下，每次只加 1；除 lphky.github.io 外無任何外部請求。
