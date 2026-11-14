@@ -14,12 +14,12 @@ export const THRESHOLDS = {
     knee3Offset: 12, kneeLeniency: 0.8, restKnee: 160, restDrop: 0.10, straightKnee: 165, leanMax: 60, minRep: 0.4,
   },
   // 掌上壓（側面）：手踭角要屈到 elbow 以下，同時膊頭要降低 drop（佔撐直時膊頭離地高度的比例）。
-  // line = 膊–髖–踝夾角下限（身體要成一直線）。
+  // line = 膊–髖–踝夾角下限（身體要成一直線）。allowKnee：容許跪膝掌上壓（膝角細過 kneeStraight 當作跪膝）。
   pushup: {
-    easy:     { elbow: 115, drop: 0.22, line: 140 },
+    easy:     { elbow: 115, drop: 0.22, line: 140, allowKnee: true },
     standard: { elbow: 100, drop: 0.30, line: 150 },
     strict:   { elbow: 90,  drop: 0.38, line: 157 },
-    restElbow: 150, straightElbow: 160, maxIncline: 40, minRep: 0.35,
+    restElbow: 150, straightElbow: 160, maxIncline: 45, kneeStraight: 140, minRep: 0.35,
   },
   // 仰臥起坐（側面）：上身與地面夾角要升到 up 以上，再瞓返落 down 以下。
   situp: {
@@ -38,8 +38,8 @@ export const THRESHOLDS = {
   // 高抬腿（正面）：lift = 膝頭升高幅度（1 = 膝頭到髖部高度）。左右腳各自計數。
   knees: {
     easy:     { lift: 0.55 },
-    standard: { lift: 0.75 },
-    strict:   { lift: 0.90 },
+    standard: { lift: 0.70 },
+    strict:   { lift: 0.82 },
     restLift: 0.30, minRep: 0.12,
   },
   // 平板支撐（側面）：身體成一直線（line）、接近水平、膊頭離地夠高先計時。
@@ -47,7 +47,7 @@ export const THRESHOLDS = {
     easy:     { line: 145 },
     standard: { line: 155 },
     strict:   { line: 162 },
-    maxIncline: 35, minLift: 0.11,
+    maxIncline: 35, minLift: 0.18,
   },
 };
 

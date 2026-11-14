@@ -160,13 +160,17 @@ export const EXERCISES = {
       const th = T.pushup[level], g = T.pushup;
       const miss = sideFraming(f, ['shoulder', 'elbow', 'wrist', 'hip', 'ankle'], NAMES);
       if (miss) return no(miss);
-      const sh = sidePt(f, 'shoulder'), hip = sidePt(f, 'hip'), an = sidePt(f, 'ankle'), wr = sidePt(f, 'wrist');
-      const inc = incline(an, sh);
-      const bodyLen = Math.hypot(sh.x - an.x, sh.y - an.y);
-      const handsDown = wr.y > sh.y - 0.02 && Math.abs(wr.y - an.y) < 0.45 * bodyLen;
-      if (inc > g.maxIncline || !handsDown) return no('請做掌上壓預備姿勢：雙手撐地、身體打橫', { dbg: { 身體傾斜: inc } });
+      const sh = sidePt(f, 'shoulder'), hip = sidePt(f, 'hip'), an = sidePt(f, 'ankle'), wr = sidePt(f, 'wrist'), kn = sidePt(f, 'knee');
+      // 上身（髖→膊）接近水平、雙手喺膊頭下面撐地，先當係掌上壓姿勢
+      const inc = incline(hip, sh);
+      const handsDown = wr.y > sh.y - 0.02;
+      if (inc > g.maxIncline || !handsDown) return no('請做掌上壓預備姿勢：雙手撐地、身體打橫', { dbg: { 上身傾斜: inc } });
       const elbow = sideAvg(f, (s) => angle(f.p[s.shoulder], f.p[s.elbow], f.p[s.wrist]), ['shoulder', 'elbow', 'wrist']);
-      const line = angle(sh, hip, an);
+      // 身體直線：膊–髖–踝；跪膝掌上壓（只限輕鬆級）改睇膊–髖–膝
+      const lineFull = angle(sh, hip, an), lineKnee = angle(sh, hip, kn);
+      const legs = angle(hip, kn, an);
+      const kneeling = legs < g.kneeStraight;
+      const line = th.allowKnee && kneeling ? Math.max(lineFull, lineKnee) : lineFull;
       const height = wr.y - sh.y;
       const top = elbow >= g.straightElbow;
       if (top) base.arm = ema(base.arm, height);
@@ -174,14 +178,15 @@ export const EXERCISES = {
       const se = Math.max(0, 165 - elbow) / (165 - th.elbow), sd = Math.max(0, drop) / th.drop;
       const p = Math.min(se, sd);
       const rest = elbow >= g.restElbow && drop <= 0.5 * th.drop;
-      const bad = line < th.line;
       // 髖在膊–踝連線之上 = 翹臀；之下 = 塌腰
       const t = (hip.x - sh.x) / ((an.x - sh.x) || 1e-6);
       const hipHigh = hip.y < sh.y + t * (an.y - sh.y);
-      const fault = bad ? (hipHigh ? '臀部唔好翹高，身體要成一直線' : '腰唔好塌，身體要成一直線') : null;
+      let fault = null;
+      if (kneeling && !th.allowKnee) fault = '膝頭唔好落地，雙腳要伸直';
+      else if (line < th.line) fault = hipHigh ? '臀部唔好翹高，身體要成一直線' : '腰唔好塌，身體要成一直線';
       return {
-        ok: true, ch: [{ p, rest }], ready: top && !bad, hint: top ? (bad ? fault : null) : '請撐直雙手',
-        fault, effort: Math.max(se, sd), dbg: { 手踭角: elbow, '膊降%': drop * 100, 身體直線: line },
+        ok: true, ch: [{ p, rest }], ready: top && !fault, hint: top ? fault : '請撐直雙手',
+        fault, effort: Math.max(se, sd), dbg: { 手踭角: elbow, '膊降%': drop * 100, 身體直線: line, 膝角: legs, 上身傾斜: inc },
       };
     },
   },
