@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-Hant-HK">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>深蹲挑戰</title>
+<meta name="description" content="用電腦鏡頭自動數深蹲的網頁遊戲。影像只在你部電腦處理，唔會上傳。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%8B%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<!--
+  深蹲挑戰 sport
+  鏡頭只可在 HTTPS 或 localhost 使用：本機請用 `npm start` 再開 http://127.0.0.1:4190/
+  直接雙擊 index.html（file://）開唔到鏡頭。
+  嵌入其他網頁時 iframe 必須加 allow="camera"。
+-->
+<style>
+:root {
+  --bg: #0d1117; --panel: #161c25; --panel2: #1f2733; --line: #2c3645;
+  --fg: #f2f5f8; --muted: #9aa7b8; --accent: #b6ff3b; --accent-ink: #10200a;
+  --warn: #ffb547; --bad: #ff6b6b; --radius: 18px;
+  font-family: system-ui, -apple-system, "PingFang HK", "Noto Sans HK", "Microsoft JhengHei", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); }
+body { min-height: 100dvh; }
+button { font: inherit; cursor: pointer; }
+.hidden { display: none !important; }
+.screen { min-height: 100dvh; display: flex; flex-direction: column; }
+
+.btn { min-height: 48px; min-width: 48px; padding: 0 22px; border-radius: 999px; border: 2px solid var(--line);
+  background: var(--panel2); color: var(--fg); font-weight: 700; font-size: 1.05rem; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.btn:hover { border-color: var(--muted); }
+.btn:focus-visible, .chip:focus-within { outline: 3px solid var(--accent); outline-offset: 3px; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-size: 1.25rem; min-height: 60px; padding: 0 40px; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.ghost { background: transparent; }
+
+/* 首頁 */
+#home { align-items: center; justify-content: center; padding: 32px 20px; gap: 28px; text-align: center; }
+.logo { font-size: clamp(2.6rem, 7vw, 4.6rem); font-weight: 900; letter-spacing: .04em; margin: 0; }
+.logo span { color: var(--accent); }
+.tagline { font-size: 1.25rem; color: var(--muted); margin: 6px 0 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; width: min(640px, 100%); }
+.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.chip { position: relative; }
+.chip input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+.chip span { display: flex; flex-direction: column; gap: 4px; min-height: 84px; justify-content: center; border-radius: 14px; border: 2px solid var(--line); padding: 10px; background: var(--panel2); }
+.chip b { font-size: 1.1rem; }
+.chip small { color: var(--muted); }
+.chip input:checked + span { border-color: var(--accent); background: #1d2a12; }
+.chip input:checked + span b::before { content: "✓ "; color: var(--accent); }
+.targets { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
+.targets .chip span { min-height: 48px; min-width: 72px; padding: 6px 14px; }
+.records { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin-top: 4px; }
+.records div { background: var(--panel2); border-radius: 12px; padding: 10px; }
+.records small { color: var(--muted); display: block; }
+.records b { font-size: 1.3rem; }
+.note { color: var(--muted); font-size: .95rem; line-height: 1.6; margin: 0; }
+.note strong { color: var(--fg); }
+.row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; align-items: center; }
+h2 { margin: 0 0 14px; font-size: 1.1rem; color: var(--muted); font-weight: 600; }
+
+/* 遊戲舞台 */
+#game { position: relative; }
+.stage { position: relative; flex: 1; overflow: hidden; background: #000; }
+.stage video, .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transform: scaleX(-1); }
+.frame-guide { position: absolute; left: 50%; top: 4%; height: 92%; aspect-ratio: 9/16; transform: translateX(-50%);
+  border: 4px dashed rgba(255,255,255,.55); border-radius: 30px; transition: border-color .2s; pointer-events: none; }
+.frame-guide.ok { border-color: var(--accent); border-style: solid; }
+.toast { position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); max-width: 92%; text-align: center;
+  background: rgba(13,17,23,.85); border: 2px solid var(--line); border-radius: 999px; padding: 12px 26px;
+  font-size: clamp(1.2rem, 3vw, 2rem); font-weight: 800; }
+.toast.ok { border-color: var(--accent); color: var(--accent); }
+.toast.warn { border-color: var(--warn); color: var(--warn); }
+.toast:empty { display: none; }
+.calib-bar { position: absolute; left: 50%; bottom: calc(6% + 80px); transform: translateX(-50%); width: min(360px, 70%); height: 12px; border-radius: 99px; background: rgba(255,255,255,.18); overflow: hidden; }
+.calib-bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .1s linear; }
+.countdown { position: absolute; inset: 0; display: grid; place-items: center; font-size: min(45vh, 40vw); font-weight: 900; color: var(--accent); text-shadow: 0 0 40px rgba(0,0,0,.7); pointer-events: none; }
+.countdown:empty { display: none; }
+
+.hud-count { position: absolute; left: 3%; top: 3%; line-height: .9; text-shadow: 0 4px 24px rgba(0,0,0,.8); }
+.hud-count b { display: block; font-size: min(20vh, 32vw); font-weight: 900; font-variant-numeric: tabular-nums; }
+.hud-count small { font-size: clamp(1rem, 2.6vh, 1.6rem); color: var(--muted); font-weight: 700; }
+.hud-count b.bump { animation: bump .2s ease-out; }
+@keyframes bump { 50% { transform: scale(1.18); color: var(--accent); } }
+.hud-timer { position: absolute; right: 3%; top: 3%; text-align: right; text-shadow: 0 4px 24px rgba(0,0,0,.8); }
+.hud-timer b { display: block; font-size: min(9vh, 12vw); font-weight: 900; font-variant-numeric: tabular-nums; }
+.hud-timer small { font-size: clamp(1rem, 2.4vh, 1.5rem); color: var(--muted); font-weight: 700; }
+.meter { position: absolute; right: 3%; top: 22%; bottom: 20%; width: clamp(28px, 4vw, 48px); border-radius: 99px; background: rgba(255,255,255,.15); border: 2px solid rgba(255,255,255,.35); overflow: visible; }
+.meter i { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 99px; background: linear-gradient(var(--warn), var(--accent)); height: 0; }
+.meter .pass { position: absolute; left: -14px; right: -14px; height: 4px; background: #fff; }
+.meter .pass::after { content: "合格線"; position: absolute; right: calc(100% + 6px); top: -12px; font-size: 1rem; font-weight: 800; white-space: nowrap; background: rgba(0,0,0,.6); padding: 2px 8px; border-radius: 6px; }
+.meter.hit { box-shadow: 0 0 0 4px var(--accent); }
+.meter-label { position: absolute; right: 3%; bottom: 14%; font-weight: 800; color: var(--muted); text-shadow: 0 2px 10px #000; }
+.paused { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.6); font-size: clamp(2rem, 6vw, 4rem); font-weight: 900; }
+
+.bar { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; padding: 12px; background: var(--panel); border-top: 1px solid var(--line); }
+.bar .status { color: var(--muted); align-self: center; margin-right: auto; padding-left: 6px; }
+
+/* 結果 */
+#result { align-items: center; justify-content: center; padding: 28px 20px; gap: 22px; text-align: center; }
+.big { font-size: clamp(4rem, 16vw, 9rem); font-weight: 900; color: var(--accent); line-height: 1; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.stats div { background: var(--panel2); border-radius: 14px; padding: 12px; }
+.stats small { display: block; color: var(--muted); }
+.stats b { font-size: 1.5rem; }
+.record { font-size: 1.6rem; font-weight: 900; color: var(--accent); }
+.record.celebrate { animation: pop 1.5s ease-out; }
+@keyframes pop { 0% { transform: scale(.4); opacity: 0; } 30% { transform: scale(1.25); opacity: 1; } 60% { transform: scale(.95); } 100% { transform: scale(1); } }
+
+/* 錯誤／載入 */
+#message { align-items: center; justify-content: center; padding: 28px 20px; text-align: center; gap: 18px; }
+#message h1 { margin: 0; font-size: 1.8rem; }
+#message p { color: var(--muted); max-width: 560px; line-height: 1.7; margin: 0; }
+.spinner { width: 54px; height: 54px; border-radius: 50%; border: 6px solid var(--line); border-top-color: var(--accent); animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+dialog { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; width: min(460px, 92vw); }
+dialog::backdrop { background: rgba(0,0,0,.6); }
+dialog h2 { color: var(--fg); font-size: 1.3rem; }
+.field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+.field > span { font-weight: 700; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.seg .chip span { min-height: 48px; padding: 6px; align-items: center; }
+.toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; }
+.toggle input { width: 26px; height: 26px; accent-color: var(--accent); }
+select { min-height: 48px; border-radius: 12px; background: var(--panel2); color: var(--fg); border: 2px solid var(--line); padding: 0 12px; font: inherit; }
+
+@media (max-width: 760px), (orientation: portrait) {
+  .modes { grid-template-columns: 1fr; }
+  .hud-count b { font-size: 14vh; }
+  .stats { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<section id="home" class="screen">
+  <div>
+    <h1 class="logo">深蹲<span>挑戰</span></h1>
+    <p class="tagline">用鏡頭自動數深蹲</p>
+  </div>
+
+  <div class="card">
+    <h2>揀模式</h2>
+    <div class="modes" role="radiogroup" aria-label="遊戲模式">
+      <label class="chip"><input type="radio" name="mode" value="free" checked><span><b>自由模式</b><small>唔限時，做幾多數幾多</small></span></label>
+      <label class="chip"><input type="radio" name="mode" value="timed"><span><b>60 秒挑戰</b><small>一分鐘做最多</small></span></label>
+      <label class="chip"><input type="radio" name="mode" value="target"><span><b>目標模式</b><small>最快完成目標</small></span></label>
+    </div>
+    <div class="targets hidden" id="targets" role="radiogroup" aria-label="目標次數">
+      <label class="chip"><input type="radio" name="target" value="10" checked><span><b>10 下</b></span></label>
+      <label class="chip"><input type="radio" name="target" value="20"><span><b>20 下</b></span></label>
+      <label class="chip"><input type="radio" name="target" value="30"><span><b>30 下</b></span></label>
+    </div>
+  </div>
+
+  <div class="row">
+    <button class="btn primary" id="startBtn">開始</button>
+    <button class="btn" id="settingsBtn" aria-label="設定">⚙️ 設定</button>
+  </div>
+
+  <div class="card">
+    <h2>最佳紀錄</h2>
+    <div class="records" id="records"></div>
+  </div>
+
+  <p class="note">🔒 <strong>影像只在你部電腦處理，唔會上傳、唔會錄影。</strong><br>
+  擺位：鏡頭大約胸口高度，人企後 2–3 米，全身入鏡，光線充足。<br>
+  ⚠️ 請量力而為，如有不適立即停止。本遊戲不是醫療或專業健身評估工具。</p>
+</section>
+
+<section id="message" class="screen hidden" aria-live="polite">
+  <div class="spinner" id="msgSpinner"></div>
+  <h1 id="msgTitle">準備緊……</h1>
+  <p id="msgText"></p>
+  <div class="row" id="msgActions"></div>
+</section>
+
+<section id="game" class="screen hidden">
+  <div class="stage" id="stage">
+    <video id="video" playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <div class="frame-guide" id="guide"></div>
+    <div class="calib-bar hidden" id="calibBar"><i></i></div>
+
+    <div id="hud" class="hidden">
+      <div class="hud-count"><b id="count">0</b><small id="countLabel">下</small></div>
+      <div class="hud-timer" id="timerBox"><b id="timer">0:00</b><small id="timerLabel">用時</small></div>
+      <div class="meter" id="meter" role="meter" aria-label="深度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="meterFill"></i><div class="pass" id="passLine"></div></div>
+      <div class="meter-label">深度</div>
+    </div>
+
+    <div class="countdown" id="countdown" aria-live="assertive"></div>
+    <div class="toast" id="toast" aria-live="polite"></div>
+    <div class="paused hidden" id="pausedLayer">⏸ 暫停中</div>
+  </div>
+  <div class="bar">
+    <span class="status" id="status"></span>
+    <button class="btn hidden" id="pauseBtn">⏸ 暫停 <small>(空白鍵)</small></button>
+    <button class="btn hidden" id="finishBtn">✅ 完成</button>
+    <button class="btn ghost" id="homeBtn">返回首頁 <small>(Esc)</small></button>
+  </div>
+</section>
+
+<section id="result" class="screen hidden">
+  <div>
+    <p class="tagline" id="resultMode"></p>
+    <div class="big" id="resultCount">0</div>
+    <p class="tagline">有效深蹲</p>
+  </div>
+  <div class="record hidden" id="resultRecord">🎉 打破最佳紀錄！</div>
+  <div class="stats card">
+    <div><small>有效率</small><b id="resultRate">–</b></div>
+    <div><small>用時</small><b id="resultTime">–</b></div>
+    <div><small>最佳紀錄</small><b id="resultBest">–</b></div>
+  </div>
+  <div class="row">
+    <button class="btn primary" id="againBtn">再玩一次</button>
+    <button class="btn" id="resultHomeBtn">返回首頁</button>
+  </div>
+  <button class="btn ghost" id="clearBtn">清除紀錄</button>
+</section>
+
+<dialog id="settings">
+  <form method="dialog">
+    <h2>設定</h2>
+    <div class="field"><span>難度（要蹲幾深先算）</span>
+      <div class="seg" role="radiogroup" aria-label="難度">
+        <label class="chip"><input type="radio" name="difficulty" value="easy"><span><b>輕鬆</b></span></label>
+        <label class="chip"><input type="radio" name="difficulty" value="standard"><span><b>標準</b></span></label>
+        <label class="chip"><input type="radio" name="difficulty" value="deep"><span><b>深蹲</b></span></label>
+      </div>
+    </div>
+    <label class="toggle"><span>音效</span><input type="checkbox" name="sound"></label>
+    <label class="toggle"><span>顯示骨架（調試用）</span><input type="checkbox" name="skeleton"></label>
+    <div class="field hidden" id="cameraField"><span>鏡頭</span><select name="camera" id="cameraSelect"></select></div>
+    <div class="row" style="margin-top:18px"><button class="btn primary" value="ok">完成</button></div>
+  </form>
+</dialog>
+
+<script type="module" src="./js/app.mjs"></script>
+</body>
+</html>
