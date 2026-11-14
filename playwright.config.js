@@ -2,7 +2,7 @@ export default {
   testDir: './tests',
   testMatch: /.*\.spec\.js/,
   timeout: 180000,
-  workers: 2,
+  workers: 1,
   reporter: 'list',
   use: {
     baseURL: 'http://127.0.0.1:4190',

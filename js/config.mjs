@@ -3,13 +3,15 @@
 export const LEVELS = { easy: '輕鬆', standard: '標準', strict: '嚴格' };
 
 export const THRESHOLDS = {
-  // 深蹲：三項任一達標即算「到底」。正面拍攝時 2D 膝角及髖降會偏細，3D 膝角作補充。
-  // 實測（正面真人相片）：大腿水平 ≈ 髖降 27%、2D 膝角 145°、3D 膝角 116°；四分一蹲 ≈ 4%、174°、158°。
+  // 深蹲：膝角（knee，真實角度；大腿水平 ≈ 90–100°）及髖部下降幅度（hipDrop，佔企直時髖到踝高度的比例）要同時達標。
+  // 側面拍攝時直接用 2D 膝角；正面拍攝時 2D 膝角會失真，改用 3D 估算膝角（偏大，所以加 knee3Offset）。
+  // 實測：側面真人深蹲膝角可到 40–100°、髖降 30–70%；彎腰執嘢膝角 111–145°、上身前傾 50–77°（不計）。
+  // 正面真人相片：半蹲至大腿接近水平 ≈ 髖降 27%、3D 膝角 116°；四分一蹲 ≈ 髖降 4%、3D 膝角 158°。
   squat: {
-    easy:     { hipDrop: 0.15, knee2: 155, knee3: 132 },
-    standard: { hipDrop: 0.20, knee2: 150, knee3: 125 },
-    strict:   { hipDrop: 0.25, knee2: 143, knee3: 118 },
-    restKnee: 160, restDrop: 0.10, straightKnee: 165, leanWarn: 55, minRep: 0.4,
+    easy:     { knee: 125, hipDrop: 0.12 },
+    standard: { knee: 110, hipDrop: 0.19 },
+    strict:   { knee: 95,  hipDrop: 0.27 },
+    knee3Offset: 12, kneeLeniency: 0.8, restKnee: 160, restDrop: 0.10, straightKnee: 165, leanMax: 60, minRep: 0.4,
   },
   // 掌上壓（側面）：手踭角要屈到 elbow 以下，同時膊頭要降低 drop（佔撐直時膊頭離地高度的比例）。
   // line = 膊–髖–踝夾角下限（身體要成一直線）。

@@ -25,7 +25,7 @@ for (const [ex, move] of [['squat', 'squat'], ['jack', 'jack'], ['pushup', 'push
     assert.equal(r.attempts, 5);
   });
   test(`${EXERCISES[ex].name}：3 下做一半 → 0，並提示未夠`, () => {
-    const r = run(ex, timeline(move, [...lead, ...reps(3, 0.6, 0.6, { squat: 0.4, jack: 0.6 }[ex] ?? 0.62)]));
+    const r = run(ex, timeline(move, [...lead, ...reps(3, 0.6, 0.6, { squat: 0.55, jack: 0.6 }[ex] ?? 0.62)]));
     assert.equal(r.score, 0);
     assert.equal(r.events.filter((e) => e === 'shallow').length, 3);
   });
@@ -55,7 +55,7 @@ for (const [ex, move] of [['squat', 'squat'], ['jack', 'jack'], ['pushup', 'push
 }
 
 test('三個級別的門檻：同一個中等幅度動作，輕鬆計、嚴格不計', () => {
-  for (const [ex, move, k] of [['squat', 'squat', 0.5], ['pushup', 'pushup', 0.72], ['situp', 'situp', 0.62], ['jack', 'jack', 0.8]]) {
+  for (const [ex, move, k] of [['squat', 'squat', 0.64], ['pushup', 'pushup', 0.72], ['situp', 'situp', 0.62], ['jack', 'jack', 0.8]]) {
     const frames = timeline(move, [...lead, ...reps(3, 0.6, 0.6, k)]);
     assert.equal(run(ex, frames, { level: 'easy' }).score, 3, `${ex} easy`);
     assert.equal(run(ex, frames, { level: 'strict' }).score, 0, `${ex} strict`);
@@ -108,6 +108,17 @@ test('仰臥起坐：企喺度彎腰、伸直腳瞓 → 0', () => {
 test('深蹲：只係彎腰鞠躬 → 0', () => {
   const bow = timeline('squat', [...lead, ...reps(3)]).map((f) => ({ ...f, lm: standing({ lean: 75 * f.k }) }));
   assert.equal(run('squat', bow).score, 0);
+});
+test('深蹲：側面彎腰執嘢（膝頭有屈、上身打橫）→ 不計並報犯規', () => {
+  const frames = timeline('squat', [...lead, ...reps(3)]).map((f) => {
+    const lm = standing({ bend: 40 * f.k, lean: 80 * f.k });
+    // 模擬側面：兩邊膊頭重疊
+    lm[12].x = lm[11].x; lm[14].x = lm[13].x; lm[16].x = lm[15].x;
+    return { ...f, lm };
+  });
+  const r = run('squat', frames);
+  assert.equal(r.score, 0);
+  assert.ok(r.events.includes('fault'));
 });
 test('深蹲：行近鏡頭後（身形變大）仍然準確', () => {
   const a = timeline('squat', [...lead, ...reps(2)]);

@@ -79,7 +79,7 @@ export function supine({ torso = 8, cx = 0.5, s = 1, visibility = 0.99, floor = 
 
 // 每種動作的「起始姿勢」及「到位姿勢」參數，k = 0（起始）至 1（完全到位）之間插值
 export const MOVES = {
-  squat: (k, o = {}) => standing({ bend: 30 * k, ...o }),
+  squat: (k, o = {}) => standing({ bend: 50 * k, ...o }),
   jack: (k, o = {}) => standing({ arm: 12 + 158 * k, spread: 8 + 40 * k, ...o }),
   kneeL: (k, o = {}) => standing({ liftL: k, ...o }),
   kneeR: (k, o = {}) => standing({ liftR: k, ...o }),

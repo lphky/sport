@@ -1,0 +1,177 @@
+<!doctype html>
+<!--
+  運動擂台 sport：用電腦鏡頭自動計算深蹲、掌上壓、仰臥起坐、開合跳、高抬腿、平板支撐，支援雙人對戰。
+  鏡頭只可以在 HTTPS 或 localhost 使用。本機測試：npm start → http://127.0.0.1:4190/
+  影像只在瀏覽器內處理，不上傳、不錄影。
+-->
+<html lang="zh-HK">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>運動擂台｜鏡頭自動計數的體育堂挑戰賽</title>
+  <meta name="description" content="用電腦鏡頭自動計算深蹲、掌上壓、仰臥起坐、開合跳、高抬腿、平板支撐，可以兩個人同場比賽。">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏟️</text></svg>">
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <main id="home" class="screen">
+    <header class="home-head">
+      <div>
+        <h1>運動擂台</h1>
+        <p class="sub">用鏡頭自動計數的體育堂挑戰賽</p>
+      </div>
+      <div class="head-actions">
+        <button class="btn ghost" id="boardBtn" type="button">🏆 龍虎榜</button>
+        <button class="btn ghost" id="settingsBtn" type="button">⚙️ 設定</button>
+      </div>
+    </header>
+
+    <section class="card">
+      <h2><span class="step">1</span>幾多人玩？</h2>
+      <div class="seg" role="radiogroup" aria-label="人數">
+        <label><input type="radio" name="players" value="1"><span>🙋 單人挑戰</span></label>
+        <label><input type="radio" name="players" value="2"><span>🤼 雙人對戰</span></label>
+      </div>
+      <div class="names" id="names">
+        <label class="name p0"><span>左邊玩家</span><input id="name0" maxlength="10" autocomplete="off" placeholder="藍方"></label>
+        <label class="name p1"><span>右邊玩家</span><input id="name1" maxlength="10" autocomplete="off" placeholder="橙方"></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2><span class="step">2</span>揀動作</h2>
+      <div class="ex-grid" id="exGrid" role="radiogroup" aria-label="動作"></div>
+      <div class="ex-info" id="exInfo"></div>
+    </section>
+
+    <section class="card">
+      <h2><span class="step">3</span>玩法</h2>
+      <div class="seg" role="radiogroup" aria-label="玩法">
+        <label><input type="radio" name="mode" value="timed"><span>⏱ 計時賽</span></label>
+        <label><input type="radio" name="mode" value="target"><span>🎯 目標賽</span></label>
+        <label><input type="radio" name="mode" value="free"><span id="freeLabel">♾️ 自由練習</span></label>
+      </div>
+      <div class="chips" id="limits" role="radiogroup" aria-label="時限或目標"></div>
+      <p class="mode-desc" id="modeDesc"></p>
+      <h3>判定級別</h3>
+      <div class="seg small" role="radiogroup" aria-label="判定級別">
+        <label><input type="radio" name="level" value="easy"><span>輕鬆</span></label>
+        <label><input type="radio" name="level" value="standard"><span>標準</span></label>
+        <label><input type="radio" name="level" value="strict"><span>嚴格</span></label>
+      </div>
+    </section>
+
+    <div class="start-row">
+      <button class="btn primary big" id="startBtn" type="button">開始</button>
+      <p class="best" id="bestLine"></p>
+    </div>
+    <footer class="notes">
+      <p>🔒 影像只在你部電腦處理，唔會上傳、唔會錄影。</p>
+      <p>⚠️ 請量力而為，如有不適立即停止。呢個唔係醫療或專業體適能評估工具。</p>
+    </footer>
+  </main>
+
+  <section id="message" class="screen center hidden" aria-live="polite">
+    <div class="card msg">
+      <div class="spinner hidden" id="msgSpinner"></div>
+      <h2 id="msgTitle"></h2>
+      <p id="msgText"></p>
+      <div class="row" id="msgActions"></div>
+    </div>
+  </section>
+
+  <section id="game" class="screen hidden">
+    <div id="stage">
+      <video id="video" playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div id="divider" aria-hidden="true"></div>
+
+      <div class="hud">
+        <div class="pp p0" id="pp0">
+          <div class="pname"></div>
+          <div class="pscore"><span class="pcount">0</span><span class="punit"></span></div>
+          <div class="pbar"><i></i></div>
+          <div class="pstatus"></div>
+        </div>
+        <div class="center-box">
+          <div id="exName"></div>
+          <div id="timer">0</div>
+          <div id="timerLabel"></div>
+          <div id="lead"></div>
+        </div>
+        <div class="pp p1" id="pp1">
+          <div class="pname"></div>
+          <div class="pscore"><span class="pcount">0</span><span class="punit"></span></div>
+          <div class="pbar"><i></i></div>
+          <div class="pstatus"></div>
+        </div>
+      </div>
+
+      <div class="meter lane0" id="meter0" role="meter" aria-label="動作幅度" aria-valuemin="0" aria-valuemax="100"><div class="fill"></div><div class="line"><span>到位線</span></div></div>
+      <div class="meter lane1" id="meter1" role="meter" aria-label="動作幅度" aria-valuemin="0" aria-valuemax="100"><div class="fill"></div><div class="line"><span>到位線</span></div></div>
+
+      <div class="ready lane0" id="ready0"><div class="ring"><b></b></div><p></p></div>
+      <div class="ready lane1" id="ready1"><div class="ring"><b></b></div><p></p></div>
+
+      <div class="toast lane0" id="toast0" aria-live="polite"></div>
+      <div class="toast lane1" id="toast1" aria-live="polite"></div>
+
+      <div id="banner" aria-live="assertive"></div>
+      <div id="pausedLayer" class="hidden"><div>⏸ 已暫停<small>撳空白鍵繼續</small></div></div>
+    </div>
+    <div class="controls">
+      <button class="btn" id="homeBtn" type="button">✕ 返回 <small>(Esc)</small></button>
+      <button class="btn" id="redoBtn" type="button">↺ 重新預備 <small>(R)</small></button>
+      <span class="grow" id="gameHint"></span>
+      <button class="btn" id="pauseBtn" type="button">⏸ 暫停 <small>(空白鍵)</small></button>
+      <button class="btn primary" id="finishBtn" type="button">✓ 完成 <small>(Enter)</small></button>
+    </div>
+  </section>
+
+  <section id="result" class="screen center hidden">
+    <div class="card result">
+      <p class="result-mode" id="resultMode"></p>
+      <h2 id="resultTitle"></h2>
+      <div class="result-players" id="resultPlayers"></div>
+      <p class="result-note" id="resultNote"></p>
+      <div class="row">
+        <button class="btn primary big" id="againBtn" type="button">再嚟一局</button>
+        <button class="btn" id="resultBoardBtn" type="button">🏆 龍虎榜</button>
+        <button class="btn" id="resultHomeBtn" type="button">換動作／返回</button>
+      </div>
+    </div>
+    <div id="confetti" aria-hidden="true"></div>
+  </section>
+
+  <dialog id="settings">
+    <form method="dialog">
+      <h2>設定</h2>
+      <label class="field"><span>姿勢模型</span>
+        <select name="model">
+          <option value="full">高準確（建議）</option>
+          <option value="lite">高速（舊電腦用）</option>
+        </select>
+      </label>
+      <label class="field hidden" id="cameraField"><span>鏡頭</span><select name="camera" id="cameraSelect"></select></label>
+      <label class="check"><input type="checkbox" name="sound"><span>音效</span></label>
+      <label class="check"><input type="checkbox" name="debug"><span>顯示量度數值（調試用）</span></label>
+      <div class="row"><button class="btn primary" value="ok">完成</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="board">
+    <form method="dialog">
+      <h2>🏆 龍虎榜</h2>
+      <p class="board-key" id="boardKey"></p>
+      <ol id="boardList"></ol>
+      <div class="row">
+        <button class="btn primary" value="ok">關閉</button>
+        <button class="btn danger" type="button" id="boardClear">清除呢個榜</button>
+        <button class="btn danger" type="button" id="boardClearAll">清除全部紀錄</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="./js/app.mjs"></script>
+</body>
+</html>

@@ -76,17 +76,24 @@ export const EXERCISES = {
       const straight = k2 >= g.straightKnee && upright(f, c);
       if (straight) base.leg = ema(base.leg, leg);
       const drop = base.leg ? 1 - leg / base.leg : 0;
-      const s1 = Math.max(0, drop) / th.hipDrop;
-      const s2 = Math.max(0, 170 - k2) / (170 - th.knee2);
-      const s3 = k3 == null ? 0 : Math.max(0, 165 - k3) / (165 - th.knee3);
-      // 3D 膝角只作輔助：要 2D 亦見到明顯屈膝先採用，避免 3D 估算雜訊造成誤計
-      const p = Math.max(s1, s2, s2 >= 0.5 || s1 >= 0.5 ? s3 : 0);
-      const rest = k2 >= g.restKnee && drop <= g.restDrop;
+      // 正面程度：膊闊 ÷ 上身長（側面 ≈ 0.1–0.25，正面 ≈ 0.55 以上）
+      const P = f.p;
+      const torso = Math.hypot(c.sh.x - c.hip.x, c.sh.y - c.hip.y) || 1e-6;
+      const front = clamp((Math.abs(P[LM.lShoulder].x - P[LM.rShoulder].x) / torso - 0.25) / 0.25, 0, 1);
+      const sSide = Math.max(0, 170 - k2) / (170 - th.knee);
+      const sFront = k3 == null ? sSide : Math.max(0, 165 - k3) / (165 - (th.knee + g.knee3Offset));
+      const sKnee = front * sFront + (1 - front) * sSide;
+      const sDrop = Math.max(0, drop) / th.hipDrop;
+      // 兩項都要達標；膝角只需達到門檻行程的 kneeLeniency，以容許估算誤差
+      const p = Math.min(sDrop, sKnee / g.kneeLeniency);
+      const rest = k2 >= g.restKnee && drop <= Math.min(g.restDrop, 0.5 * th.hipDrop);
       const ln = lean(c);
+      // 彎腰（上身接近打橫）唔係深蹲：側面先量度得到
+      const fault = !rest && ln > g.leanMax ? '唔好彎腰，要屈膝蹲低、挺直上身' : null;
       return {
         ok: true, ch: [{ p, rest }], ready: straight && !standingSize(f), hint: standingSize(f) || (straight ? null : '請企直'),
-        tip: ln > g.leanWarn && !rest ? '挺直上身' : null,
-        dbg: { 膝角2D: k2, 膝角3D: k3 ?? 0, '髖降%': drop * 100 },
+        fault, effort: Math.max(sDrop, sKnee),
+        dbg: { 膝角2D: k2, 膝角3D: k3 ?? 0, '髖降%': drop * 100, 前傾: ln, '正面%': front * 100 },
       };
     },
   },

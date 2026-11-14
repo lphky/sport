@@ -1,8 +1,8 @@
 {
   "name": "sport",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "深蹲挑戰：用電腦鏡頭自動數深蹲的網頁遊戲",
+  "description": "運動擂台：用電腦鏡頭自動計算六種運動、支援雙人對戰的網頁遊戲",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs && playwright test",
