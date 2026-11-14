@@ -90,7 +90,12 @@ for (const [name, sc] of Object.entries(SCENARIOS)) {
     const read = () => p.evaluate(() => [...document.querySelectorAll('.pp:not([style*="none"]) .pcount')].map((e) => Number(e.textContent)));
     let ok, detail;
     if (sc.plank) {
-      await p.waitForSelector('#result:not(.hidden)', { timeout: 90000 });
+      const t0 = Date.now();
+      while (!(await p.locator('#result:not(.hidden)').count()) && Date.now() - t0 < 120000) {
+        if (args.includes('--debug')) console.log(((Date.now() - t0) / 1000).toFixed(1), await p.evaluate(() => [document.querySelector('#pp0 .pcount')?.textContent, document.querySelector('#toast0')?.textContent, document.querySelector('#gameHint')?.textContent].join(' | ')));
+        await p.waitForTimeout(1000);
+      }
+
       const score = Number((await p.locator('#resultPlayers .s').textContent()).replace(/[^\d.]/g, ''));
       const total = Number((await p.locator('#resultNote').textContent()).match(/([\d.]+) 秒/)[1]);
       ok = score > 3 && Math.abs(total - 3 - score) < 1.5;
@@ -98,8 +103,8 @@ for (const [name, sc] of Object.entries(SCENARIOS)) {
     } else {
       const seen = [];
       const t0 = Date.now();
-      // 由開始計數起，觀察到片段完結後一段時間
-      while (Date.now() - t0 < (LEAD + sc.wait) * 1000) { seen.push((await read()).slice(0, sc.setup.players)); await p.waitForTimeout(300); if (sc.check(seen.at(-1)) && Date.now() - t0 > 12000 && seen.length > 60) break; }
+      // 由開始計數起觀察到達預期數值為止（網上版載入較慢，開始時間不定），之後再等 3 秒確認冇多計
+      while (Date.now() - t0 < (LEAD + sc.wait + 45) * 1000) { seen.push((await read()).slice(0, sc.setup.players)); await p.waitForTimeout(300); if (sc.check(seen.at(-1))) break; }
       await p.screenshot({ path: `test-results/real-${name}.png` });
       const final = seen.at(-1);
       // 計數只可以每次加 1，而且穩定在預期數值

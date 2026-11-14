@@ -296,6 +296,13 @@ function cameraError(e) {
 }
 
 // ---------- 模型 ----------
+// MediaPipe 程式庫會自行向 Google 發送使用統計；一律擋住，確保遊戲唔會連去其他網站
+const realFetch = window.fetch.bind(window);
+window.fetch = (input, init) => {
+  const url = typeof input === 'string' ? input : input?.url || String(input);
+  return /(^|\/\/)odml\.pa\.googleapis\.com/.test(url) ? Promise.reject(new TypeError('blocked')) : realFetch(input, init);
+};
+
 async function loadVision() {
   try { return { mod: await import(new URL(VISION_LOCAL, document.baseURI).href), wasm: new URL(WASM_LOCAL, document.baseURI).href }; } catch (e) {
     console.warn('本地 tasks-vision 載入失敗，改用 CDN', e);

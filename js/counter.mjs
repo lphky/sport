@@ -81,7 +81,8 @@ export function createHoldCounter({ cfg = CONFIG } = {}) {
     update(m, t) {
       const ev = [];
       const good = !!(m && m.ok && m.holding);
-      const dt = s.lastT === null ? 0 : Math.min(0.25, Math.max(0, t - s.lastT));
+      // 上限 1 秒：慢電腦每秒得幾幀都要計足時間；更長嘅空檔（切換分頁等）先唔計
+      const dt = s.lastT === null ? 0 : Math.min(1, Math.max(0, t - s.lastT));
       s.lastT = t;
       if (good) {
         s.badSince = null;

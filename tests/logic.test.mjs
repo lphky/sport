@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPlayer } from '../js/player.mjs';
 import { createTracker } from '../js/tracker.mjs';
+import { createHoldCounter } from '../js/counter.mjs';
 import { EXERCISES } from '../js/exercises.mjs';
 import { makeFrame } from '../js/geometry.mjs';
 import { MOVES, prone, reps, standing, supine, timeline } from './pose-sim.mjs';
@@ -136,6 +137,14 @@ test('平板支撐：保持 5 秒 → 約 5 秒；塌腰、趴低都停止計時
   assert.equal(run('plank', flat).score, 0);
   const high = run('plank', timeline('plank', [[0, 3]]).map((f) => ({ ...f, lm: prone({ elbow: 175 }) })));
   assert.ok(high.score > 2.7, '撐直手的平板支撐亦計');
+});
+test('平板支撐：慢電腦每秒只得 2 幀仍計足時間；中途停咗好耐（切換分頁）唔計', () => {
+  const slow = createHoldCounter();
+  for (let t = 0; t <= 10; t += 0.5) slow.update({ ok: true, holding: true }, t);
+  assert.ok(Math.abs(slow.seconds - 10) < 0.01, `got ${slow.seconds}`);
+  const gap = createHoldCounter();
+  gap.update({ ok: true, holding: true }, 0); gap.update({ ok: true, holding: true }, 1); gap.update({ ok: true, holding: true }, 30);
+  assert.ok(gap.seconds <= 2, `got ${gap.seconds}`);
 });
 test('平板支撐：企喺度 → 0', () => {
   assert.equal(run('plank', timeline('squat', [[0, 3]])).score, 0);
