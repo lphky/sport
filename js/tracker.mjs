@@ -5,7 +5,7 @@ import { personBox } from './geometry.mjs';
 // 未鎖定時揀範圍內最接近範圍中心的人；鎖定後只跟同一人。
 // 鎖定的人走咗（超過 trackHoldSeconds）不會自動轉人：返回原位會接返，或者撳畫面重新鎖定。
 // poses：[{ lm, world }]。update() 回傳 { pose, index, lost }
-export function createTracker({ zone = [0, 1], cfg = CONFIG } = {}) {
+export function createTracker({ zone = [0, 1], cfg = CONFIG, reacquire = false } = {}) {
   let lock = null; // { cx, cy, size, seenT, manual, lost }
   const center = (zone[0] + zone[1]) / 2;
   const inZone = (b) => b.cx >= zone[0] && b.cx < zone[1];
@@ -39,6 +39,8 @@ export function createTracker({ zone = [0, 1], cfg = CONFIG } = {}) {
         if (m.length) chosen = m.reduce((a, c) => (d2(c.box, lock.cx, lock.cy) < d2(a.box, lock.cx, lock.cy) ? c : a));
         else {
           if (t - lock.seenT > cfg.trackHoldSeconds) lock.lost = true;
+          // reacquire（只供離線重播工具用）：走咗就重新揀人
+          if (lock.lost && reacquire) { lock = null; return this.update(poses, t, { autoLock, taken }); }
           return { pose: null, index: -1, lost: lock.lost };
         }
       } else {

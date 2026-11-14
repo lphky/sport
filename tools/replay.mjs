@@ -2,6 +2,7 @@
 // 用法：node tools/replay.mjs <關鍵點.json> <動作> [--level standard] [--from 秒] [--to 秒] [--trace] [--zone 0,1]
 import { readFileSync } from 'node:fs';
 import { createPlayer } from '../js/player.mjs';
+import { CONFIG } from '../js/config.mjs';
 
 export function loadPoses(file) {
   const d = JSON.parse(readFileSync(file, 'utf8'));
@@ -12,7 +13,7 @@ export function loadPoses(file) {
 }
 export function replay(file, exercise, { level = 'standard', from = 0, to = 1e9, zone = [0, 1], trace = false, skipReady = true } = {}) {
   const { aspect, frames } = loadPoses(file);
-  const pl = createPlayer({ exercise, level, zone });
+  const pl = createPlayer({ exercise, level, zone, reacquire: true, cfg: { ...CONFIG, trackHoldSeconds: 0.3 } });
   const log = [];
   for (const f of frames) {
     if (f.t < from || f.t > to) continue;

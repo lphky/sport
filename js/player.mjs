@@ -5,9 +5,9 @@ import { createSmoother, makeFrame } from './geometry.mjs';
 import { createTracker } from './tracker.mjs';
 
 // 一位玩家的完整流程：追蹤 → 平滑 → 量度 → 計數。純邏輯，可用錄低的關鍵點重播測試。
-export function createPlayer({ exercise, level = 'standard', zone = [0, 1], cfg = CONFIG } = {}) {
+export function createPlayer({ exercise, level = 'standard', zone = [0, 1], cfg = CONFIG, reacquire = false } = {}) {
   const ex = EXERCISES[exercise];
-  const tracker = createTracker({ zone, cfg });
+  const tracker = createTracker({ zone, cfg, reacquire });
   const smoother = createSmoother(cfg.filter);
   const counter = ex.kind === 'hold' ? createHoldCounter({ cfg }) : createCounter({ channels: ex.channels, minRep: THRESHOLDS[exercise].minRep, cfg });
   let base = {};

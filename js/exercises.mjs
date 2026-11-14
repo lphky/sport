@@ -14,18 +14,19 @@ const ema = (prev, v, a = 0.2) => (prev == null ? v : prev + a * (v - prev));
 const no = (hint, extra = {}) => ({ ok: false, hint, ch: [], ready: false, ...extra });
 
 function centers(f) {
-  const P = f.p;
-  return {
-    sh: mid(P[LM.lShoulder], P[LM.rShoulder]), hip: mid(P[LM.lHip], P[LM.rHip]),
-    knee: mid(P[LM.lKnee], P[LM.rKnee]), ankle: mid(P[LM.lAnkle], P[LM.rAnkle]),
-  };
+  return { sh: sidePt(f, 'shoulder'), hip: sidePt(f, 'hip'), knee: sidePt(f, 'knee'), ankle: sidePt(f, 'ankle') };
 }
-// 企立類動作：全身（兩邊）都要入鏡
-function standingFraming(f, withArms = false) {
-  const groups = [['頭', [LM.nose]], ['膊頭', [LM.lShoulder, LM.rShoulder]], ['髖部', [LM.lHip, LM.rHip]], ['膝頭', [LM.lKnee, LM.rKnee]], ['腳踝', [LM.lAnkle, LM.rAnkle]]];
-  if (withArms) groups.splice(2, 0, ['雙手', [LM.lWrist, LM.rWrist]]);
+// 企立類動作：全身要入鏡。both = 左右兩邊都要清楚（正面動作）；否則最少一邊清楚（容許側身）
+function standingFraming(f, { both = false, arms = false } = {}) {
+  const ok = (l, r) => (both ? seen(f, l) && seen(f, r) : seen(f, l) || seen(f, r));
+  const missing = [];
+  if (!seen(f, LM.nose) && !ok(LM.lShoulder, LM.rShoulder)) missing.push('頭');
+  if (!ok(LM.lShoulder, LM.rShoulder)) missing.push('膊頭');
   // 手舉高時可能短暫出鏡，只檢查可信度
-  const missing = groups.filter(([n, idx]) => !idx.every((i) => (n === '雙手' ? f.p[i].v >= 0.3 : seen(f, i)))).map(([n]) => n);
+  if (arms && !(f.p[LM.lWrist].v >= 0.3 && f.p[LM.rWrist].v >= 0.3)) missing.push('雙手');
+  if (!ok(LM.lHip, LM.rHip)) missing.push('髖部');
+  if (!ok(LM.lKnee, LM.rKnee)) missing.push('膝頭');
+  if (!ok(LM.lAnkle, LM.rAnkle)) missing.push('腳踝');
   if (missing.length >= 4) return '睇唔到你，請企入鏡頭範圍';
   if (missing.includes('腳踝') || missing.includes('膝頭')) return `睇唔到${missing.join('、')}，請行後少少`;
   if (missing.includes('頭')) return '睇唔到頭，請行後少少';
@@ -33,7 +34,7 @@ function standingFraming(f, withArms = false) {
   return null;
 }
 function standingSize(f) {
-  const h = Math.max(f.p[LM.lAnkle].y, f.p[LM.rAnkle].y) - f.p[LM.nose].y;
+  const h = sidePt(f, 'ankle').y - Math.min(f.p[LM.nose].y, sidePt(f, 'shoulder').y);
   if (h > 0.97) return '太近，請後退';
   if (h < 0.28) return '太遠，請行近少少';
   return null;
@@ -52,11 +53,11 @@ function sideFraming(f, joints, names) {
   return `睇唔到${lost.join('、') || '全身'}，請側身對住鏡頭、全身入鏡`;
 }
 const NAMES = { shoulder: '膊頭', elbow: '手踭', wrist: '手腕', hip: '髖部', knee: '膝頭', ankle: '腳踝' };
-const sidePt = (f, j) => {
+function sidePt(f, j) {
   const l = f.p[SIDES.l[j]], r = f.p[SIDES.r[j]];
   const wl = l.v * l.v + 1e-6, wr = r.v * r.v + 1e-6;
   return { x: (l.x * wl + r.x * wr) / (wl + wr), y: (l.y * wl + r.y * wr) / (wl + wr) };
-};
+}
 
 export const EXERCISES = {
   squat: {
@@ -98,7 +99,7 @@ export const EXERCISES = {
     shallow: '手要舉高過頭、腳要打開',
     measure(f, base, level) {
       const th = T.jack[level], g = T.jack;
-      const miss = standingFraming(f, true);
+      const miss = standingFraming(f, { both: true, arms: true });
       if (miss) return no(miss);
       const c = centers(f), P = f.p;
       const arm = (angle(P[LM.lHip], P[LM.lShoulder], P[LM.lWrist]) + angle(P[LM.rHip], P[LM.rShoulder], P[LM.rWrist])) / 2;
