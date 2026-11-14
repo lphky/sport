@@ -36,7 +36,7 @@ async function setupGame(page, { players = 1, ex = 'squat', mode = 'free', limit
 const phase = (page) => page.evaluate(() => window.__sport.phase);
 const scores = (page) => page.evaluate(() => window.__sport.scores);
 // 預備姿勢 2 秒 + 倒數 3 秒
-const READY = [[0, 5.4]];
+const READY = [[0, 6.2]];
 
 const SOLO = [
   ['squat', 'squat', '深蹲'], ['pushup', 'pushup', '掌上壓'], ['situp', 'situp', '仰臥起坐'], ['jack', 'jack', '開合跳'],

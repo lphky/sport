@@ -1,4 +1,4 @@
-import { CONFIG, LEVELS, MODELS, STORAGE_PREFIX, VISION_CDN, VISION_LOCAL, WASM_CDN, WASM_LOCAL } from './config.mjs';
+import { CONFIG, LEVELS, MODELS, STORAGE_PREFIX, THRESHOLDS, VISION_CDN, VISION_LOCAL, WASM_CDN, WASM_LOCAL } from './config.mjs';
 import { EXERCISES, EXERCISE_ORDER } from './exercises.mjs';
 import { personBox } from './geometry.mjs';
 import { createPlayer } from './player.mjs';
@@ -89,6 +89,20 @@ const boardTitle = (s = setup) => `${EXERCISES[s.ex].name}・${modeText(s)}・${
 // 目標賽比用時（少者勝），其餘比成績（多者勝）
 const lowerWins = (s = setup) => s.mode === 'target';
 
+// 每個級別的判定標準（由門檻自動生成，改 config.mjs 後會自動更新）
+function levelNote(id, level) {
+  const t = THRESHOLDS[id][level], pc = (v) => Math.round(v * 100);
+  switch (id) {
+    case 'squat': return `膝頭屈到約 ${t.knee}° 或以下，髖部下降最少 ${pc(t.hipDrop)}%；彎腰唔屈膝唔計。`;
+    case 'pushup': return `手踭屈到 ${t.elbow}° 或以下，膊頭下降最少 ${pc(t.drop)}%，身體直線最少 ${t.line}°；${t.allowKnee ? '可以跪膝做。' : '膝頭唔可以落地。'}`;
+    case 'situp': return `上身升到離地 ${t.up}° 或以上，再瞓返到 ${t.down}° 或以下。`;
+    case 'jack': return `手臂舉到 ${t.arm}° 或以上，同時兩腿打開 ${t.leg}° 或以上。`;
+    case 'knees': return `膝頭升到髖部高度嘅 ${pc(t.lift)}% 或以上。`;
+    case 'plank': return `身體直線最少 ${t.line}°，上身要撐離地面。`;
+    default: return '';
+  }
+}
+
 // ---------- 畫面切換 ----------
 function show(id) {
   for (const s of ['home', 'message', 'game', 'result']) $(s).classList.toggle('hidden', s !== id);
@@ -152,7 +166,7 @@ function refreshHome() {
   document.querySelector('.name.p1').classList.toggle('hidden', setup.players === 1);
   document.querySelector('.name.p0 span').textContent = setup.players === 1 ? '玩家名（龍虎榜用）' : '左邊玩家';
   $('name0').placeholder = setup.players === 1 ? '玩家' : DEFAULT_NAMES[0];
-  $('exInfo').innerHTML = `<div><b>擺位：</b>${e.setup}${setup.players === 2 ? '兩位玩家分別喺畫面左、右兩邊，唔好越過中線。' : ''}</div><div><b>點樣先計：</b>${e.rule}</div>`;
+  $('exInfo').innerHTML = `<div><b>擺位：</b>${e.setup}${setup.players === 2 ? '兩位玩家分別喺畫面左、右兩邊，唔好越過中線。' : ''}</div><div><b>點樣先計：</b>${e.rule}</div><div><b>${LEVELS[setup.level]}級標準：</b>${levelNote(setup.ex, setup.level)}</div>`;
   $('freeLabel').textContent = hold ? '🏔 鬥耐力' : '♾️ 自由練習';
   const opts = setup.mode === 'timed' ? LIMITS.timed : setup.mode === 'target' ? (hold ? LIMITS.holdTarget : LIMITS.target) : [];
   if (setup.mode === 'target' && !opts.includes(setup.target)) setup.target = opts[1];
@@ -545,6 +559,7 @@ function readyFrame(results, t) {
     if (p.isReady && !u.readyBeeped) { u.readyBeeped = true; sfx.ready(); }
     if (!p.isReady) u.readyBeeped = false;
   });
+  if (!SIM && detectMs > 110 && settings.model === 'full') $('gameHint').textContent = `部電腦運算較慢（每幀 ${detectMs.toFixed(0)} 毫秒），計數可能跟唔切：可以返回首頁，喺「設定」改用「高速」模型。`;
   if (players.every((p) => p.isReady)) startCountdown();
   void t;
 }
@@ -754,6 +769,8 @@ $('resultBoardBtn').onclick = () => openBoard(game);
 $('homeBtn').onclick = goHome;
 $('resultHomeBtn').onclick = goHome;
 $('redoBtn').onclick = () => { if (game) restartReady(); };
+const toggleFullscreen = () => { if (document.fullscreenElement) document.exitFullscreen?.(); else document.documentElement.requestFullscreen?.().catch(() => {}); };
+$('fsBtn').onclick = toggleFullscreen;
 $('pauseBtn').onclick = () => setPaused(!game?.paused);
 $('finishBtn').onclick = () => endGame('完成！');
 $('againBtn').onclick = () => {
@@ -771,6 +788,7 @@ document.addEventListener('keydown', (e) => {
   else if ((e.code === 'Space' || e.key === ' ') && phase === 'play') { e.preventDefault(); setPaused(!game.paused); }
   else if (e.key === 'Enter' && phase === 'play' && game.mode === 'free' && document.activeElement?.tagName !== 'BUTTON') { e.preventDefault(); endGame('完成！'); }
   else if ((e.key === 'r' || e.key === 'R') && ['ready', 'countdown', 'play'].includes(phase)) { e.preventDefault(); restartReady(); }
+  else if ((e.key === 'f' || e.key === 'F') && phase !== 'home') { e.preventDefault(); toggleFullscreen(); }
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { if (phase === 'play') setPaused(true); }
