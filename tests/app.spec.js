@@ -177,8 +177,46 @@ test('多人：追蹤中間的人並畫框；旁人蹲都唔計；撳旁人可�
   const side = 0.5 - 0.32;
   // SIM 模式畫面比例 = 畫布比例，故 x 直接按闊度換算
   await page.mouse.click(box.x + geo.w * (1 - side), box.y + geo.h * 0.6);
-  await expect(page.locator('#toast')).toHaveText(/已轉為追蹤/);
+  await expect(page.locator('#toast')).toHaveText(/已鎖定/);
   await run([[0, 0.3]], 'stand');
   expect(Math.abs((await page.evaluate(() => window.__sport.trackedCx)) - side)).toBeLessThan(0.01);
   expect(await page.evaluate(() => window.__sport.reps)).toBe(2);
+});
+
+test('鎖定的人走咗：唔轉追旁人，顯示提示；撳旁人重新鎖定後繼續數', async ({ page }) => {
+  await page.goto('/?sim');
+  await page.getByRole('button', { name: '開始' }).click();
+  const run = (segs, withMe) => page.evaluate(async ([segs, withMe]) => {
+    const { makePose, timeline } = await import('/tests/pose-sim.mjs');
+    const t0 = performance.now();
+    for (const f of timeline(segs)) {
+      const wait = t0 + f.t * 1000 - performance.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      const other = makePose(withMe ? 0 : f.phi, { dx: -0.3 });
+      window.__sport.inject(withMe ? [other, makePose(f.phi, { dx: 0.02 })] : [other]);
+    }
+  }, [segs, withMe]);
+  await run([[0, 6.5]], true);
+  await expect.poll(() => page.evaluate(() => window.__sport.phase)).toBe('play');
+  const squat = [[0, 0.4], [60, 0.8], [60, 0.2], [0, 0.8]];
+  await run([[0, 0.3], ...squat], true);
+  await expect(page.locator('#count')).toHaveText('1');
+  // 玩家走咗，剩低旁人喺度深蹲：唔會轉追、唔會計數
+  await run([[0, 2.2], ...squat, ...squat], false);
+  await expect(page.locator('#toast')).toHaveText(/鎖定嘅人走咗/);
+  expect(await page.evaluate(() => window.__sport.reps)).toBe(1);
+  expect(await page.evaluate(() => window.__sport.trackedCx)).toBeNull();
+  await page.screenshot({ path: 'test-results/lost-lock.png' });
+  // 撳旁人重新鎖定
+  const box = await page.locator('#stage').boundingBox();
+  const geo = await page.evaluate(() => {
+    const r = document.getElementById('overlay').getBoundingClientRect();
+    return { w: r.width, h: r.height };
+  });
+  const side = 0.5 - 0.3;
+  await page.mouse.click(box.x + geo.w * (1 - side), box.y + geo.h * 0.6);
+  await expect(page.locator('#toast')).toHaveText(/已鎖定/);
+  await run([[0, 0.8], ...squat, ...squat], false);
+  expect(Math.abs((await page.evaluate(() => window.__sport.trackedCx)) - side)).toBeLessThan(0.01);
+  await expect(page.locator('#count')).toHaveText('3');
 });

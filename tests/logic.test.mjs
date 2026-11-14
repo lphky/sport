@@ -127,19 +127,35 @@ test('鎖定後：有人行入中間都繼續追原本的人', () => {
   }
 });
 
-test('鎖定的人短暫消失唔會轉追旁人；消失太耐先改揀中間的人', () => {
+test('鎖定的人走咗：唔自動轉追旁人，等撳選重新鎖定；返原位會自動接返', () => {
   const tr = createTracker();
   const me = makePose(0, { dx: 0.25 });
   const other = makePose(0, { dx: -0.05 });
   tr.update([me], 0);
   let r = tr.update([other], 0.5);
   assert.equal(r.pose, null);
-  assert.equal(r.switched, false);
+  assert.equal(r.lost, false, '短暫消失未算走咗');
   r = tr.update([me, other], 1.0);
   assert.equal(r.pose, me);
-  r = tr.update([other], 3.0);
+  for (const t of [3, 10, 60]) {
+    r = tr.update([other], t);
+    assert.equal(r.pose, null, '走咗好耐都唔會轉追旁人');
+    assert.equal(r.lost, true);
+    assert.equal(tr.lost, true);
+  }
+  // 撳旁人重新鎖定
+  assert.equal(tr.selectAt(0.45, 0.5, [other], 61), true);
+  r = tr.update([other], 61.1);
   assert.equal(r.pose, other);
-  assert.equal(r.switched, true);
+  assert.equal(r.lost, false);
+  // 再走咗，原本嗰位返嚟原位都唔會搶走鎖定（距離太遠）
+  r = tr.update([me], 70);
+  assert.equal(r.pose, null);
+  assert.equal(r.lost, true);
+  // 鎖定的人返到原位：自動接返
+  r = tr.update([me, other], 71);
+  assert.equal(r.pose, other);
+  assert.equal(r.lost, false);
 });
 
 test('未鎖定（站位階段）每幀揀最中間；撳選可手動指定', () => {

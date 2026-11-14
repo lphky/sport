@@ -38,6 +38,8 @@ let baseline = null;
 let game = null;
 let toastTimer = 0;
 let toastLock = '';
+let trackLost = false;
+const LOST_MSG = '鎖定嘅人走咗：返回原位會自動接返，或撳畫面上嘅人重新鎖定';
 let lastLeanToast = 0;
 let lastSeenPose = 0;
 let dark = false;
@@ -284,6 +286,7 @@ function restartSetup() {
   smoother.reset();
   counter.reset();
   tracker.reset();
+  trackLost = false;
   $('hud').classList.add('hidden');
   $('guide').classList.remove('hidden', 'ok');
   $('calibBar').classList.add('hidden');
@@ -400,8 +403,8 @@ function frame() {
   // 站位未開始校準前，每幀重新揀最中間的人；開始校準後鎖定同一人
   const autoLock = phase !== 'setup' || calib.samples.length > 0;
   const tr = tracker.update(r.poses, t, autoLock);
-  if (tr.switched) onPersonSwitch();
   const pose = tr.pose;
+  trackLost = tr.lost;
   const framing = checkFraming(pose);
   const lms = framing.ok || (pose && phase === 'play') ? smoother.push(pose) : (smoother.reset(), null);
   if (pose) lastSeenPose = t;
@@ -418,7 +421,8 @@ function setupFrame(lms, framing, t, aspect) {
   if (!framing.ok) {
     calib = { samples: [], since: 0 };
     $('calibBar').classList.add('hidden');
-    if (dark && t - lastSeenPose > 2) toast('光線可能不足，請開燈或面向光源', 'warn');
+    if (trackLost) toast(LOST_MSG, 'warn');
+    else if (dark && t - lastSeenPose > 2) toast('光線可能不足，請開燈或面向光源', 'warn');
     else toast(framing.hint, 'warn');
     return;
   }
@@ -460,6 +464,7 @@ function playFrame(lms, framing, t, aspect) {
     else if (e === 'lost') { toastLock = 'lost'; toast(dark ? '睇唔到你，光線可能不足' : '睇唔到你，請返回畫面', 'warn', 0, 'lost'); }
     else if (e === 'back') { toastLock = ''; toast('返嚟喇！先企直', 'ok', 1500); }
   }
+  if (trackLost && $('toast').textContent !== LOST_MSG) { toastLock = 'lost'; toast(LOST_MSG, 'warn', 0, 'lost'); }
   if (!toastLock) {
     if (counter.state === 'idle' && !$('toast').textContent) toast('企直準備');
     else if (counter.state !== 'idle' && $('toast').textContent === '企直準備') toast('');
@@ -513,7 +518,8 @@ $('stage').addEventListener('click', (e) => {
   const y = (e.clientY - g.rect.top - g.oy) / g.h;
   if (tracker.selectAt(x, y, lastPoses, performance.now() / 1000)) {
     onPersonSwitch();
-    toast('已轉為追蹤呢個人', 'ok', 1500);
+    trackLost = false;
+    toast('已鎖定呢個人', 'ok', 1500);
   }
 });
 
@@ -540,7 +546,7 @@ function drawPeople(people, ok, multiple, g) {
     }
     ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, bw, bh, 14) : ctx.rect(x, y, bw, bh); ctx.stroke();
     // 標籤：畫布經 CSS 鏡像，文字要反轉；標籤貼框的畫面左上角
-    const label = tracked ? (multiple ? '✓ 追蹤緊呢位' : '✓ 追蹤中') : '未追蹤（撳一下轉追佢）';
+    const label = tracked ? (multiple ? '✓ 已鎖定呢位' : '✓ 已鎖定') : (trackLost ? '撳一下鎖定佢' : '未追蹤（撳一下轉追佢）');
     ctx.scale(-1, 1);
     ctx.font = `bold ${tracked ? 18 : 14}px system-ui, sans-serif`;
     const tw = ctx.measureText(label).width + 16, th = tracked ? 28 : 24;

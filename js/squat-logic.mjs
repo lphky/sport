@@ -166,7 +166,7 @@ export function personBox(lms, minVis = 0.3) {
 
 // 揀畫面中間的人並鎖定：鎖定後只跟同一人；人消失超過 trackHoldSeconds 才重新揀。
 // 用 selectAt() 可手動指定追蹤某人。
-// update() 回傳 { pose, people:[{box, tracked}], multiple, switched }
+// update() 回傳 { pose, people:[{box, tracked}], multiple, lost }
 export function createTracker(cfg = CONFIG) {
   let lock = null; // { cx, w, h, seenT, manual }
   const closest = (list, x) => list.reduce((a, c) => (Math.abs(c.box.cx - x) < Math.abs(a.box.cx - x) ? c : a));
@@ -178,13 +178,14 @@ export function createTracker(cfg = CONFIG) {
   return {
     get locked() { return !!lock; },
     get manual() { return !!lock?.manual; },
+    get lost() { return !!lock?.lost; },
     reset() { lock = null; },
     // x, y：未鏡像的畫面座標（0–1）
     selectAt(x, y, poses, t) {
       const hit = people(poses).filter(({ box: b }) => x >= b.x0 - 0.03 && x <= b.x1 + 0.03 && y >= b.y0 - 0.05 && y <= b.y1 + 0.05);
       if (!hit.length) return false;
       const c = closest(hit, x);
-      lock = { cx: c.box.cx, w: c.box.w, h: c.box.h, seenT: t, manual: true };
+      lock = { cx: c.box.cx, w: c.box.w, h: c.box.h, seenT: t, manual: true, lost: false };
       return true;
     },
     // autoLock = false：未手動指定時每幀重新揀中間的人（站位未完成時用）
@@ -192,23 +193,27 @@ export function createTracker(cfg = CONFIG) {
       if (!autoLock && lock && !lock.manual) lock = null;
       const list = people(poses);
       const multiple = list.filter((x) => x.box.coreVis >= cfg.minVisibility).length > 1;
-      let chosen = null, switched = false;
+      let chosen = null;
       if (lock && list.length) {
         const m = list.filter((x) => matches(x.box));
         if (m.length) chosen = closest(m, lock.cx);
       }
+      const others = () => list.map((x) => ({ box: x.box, tracked: false }));
       if (!chosen && lock && t - lock.seenT <= cfg.trackHoldSeconds) {
         // 鎖定的人暫時睇唔到：唔轉去追其他人
-        return { pose: null, people: list.map((x) => ({ box: x.box, tracked: false })), multiple, switched };
+        return { pose: null, people: others(), multiple, lost: false };
+      }
+      if (!chosen && lock) {
+        // 鎖定的人走咗：保持鎖定、唔自動轉追其他人；佢返到原位會自動接返，或者撳畫面重新鎖定
+        lock.lost = true;
+        return { pose: null, people: others(), multiple, lost: true };
       }
       if (!chosen && list.length) {
         const good = list.filter((x) => x.box.coreVis >= cfg.minVisibility);
         chosen = closest(good.length ? good : list, 0.5);
-        switched = !!lock;
-        lock = null;
       }
-      if (chosen) lock = { cx: chosen.box.cx, w: chosen.box.w, h: chosen.box.h, seenT: t, manual: !!lock?.manual };
-      return { pose: chosen ? chosen.p : null, people: list.map((x) => ({ box: x.box, tracked: x === chosen })), multiple, switched };
+      if (chosen) lock = { cx: chosen.box.cx, w: chosen.box.w, h: chosen.box.h, seenT: t, manual: !!lock?.manual, lost: false };
+      return { pose: chosen ? chosen.p : null, people: list.map((x) => ({ box: x.box, tracked: x === chosen })), multiple, lost: false };
     },
   };
 }
