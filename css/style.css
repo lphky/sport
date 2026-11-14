@@ -83,11 +83,11 @@ code { background: var(--bg); padding: 2px 6px; border-radius: 6px; }
 body.solo #divider, body.solo #pp1, body.solo .lane1, body.solo #lead { display: none; }
 
 .hud { position: absolute; top: 0; left: 0; right: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 10px; padding: 12px; pointer-events: none; }
-.pp { --c: var(--p0); justify-self: start; background: rgba(8,12,18,.78); border: 3px solid var(--c); border-radius: 20px; padding: 8px 18px 10px; min-width: min(30vw, 300px); backdrop-filter: blur(4px); }
+.pp { --c: var(--p0); justify-self: start; background: rgba(8,12,18,.7); border: 3px solid var(--c); border-radius: 20px; padding: 6px 18px 8px; min-width: min(26vw, 280px); backdrop-filter: blur(4px); }
 .pp.p1 { --c: var(--p1); justify-self: end; text-align: right; }
 .pname { font-weight: 800; color: var(--c); font-size: clamp(1rem, 2vw, 1.5rem); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30vw; }
 .pscore { line-height: 1; font-variant-numeric: tabular-nums; }
-.pcount { font-size: clamp(4rem, 17vh, 11rem); font-weight: 900; display: inline-block; }
+.pcount { font-size: clamp(3.4rem, 12.5vh, 8.5rem); font-weight: 900; display: inline-block; }
 .punit { font-size: clamp(1rem, 3vh, 2rem); font-weight: 700; color: var(--muted); margin-left: 6px; }
 .pcount.bump { animation: bump .22s ease-out; }
 @keyframes bump { 40% { transform: scale(1.25); color: var(--accent); } }
