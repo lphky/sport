@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DIFFICULTIES } from '../js/config.mjs';
-import { angle, checkFraming, createCounter, makeBaseline, measure, pickPose, rawMeasure } from '../js/squat-logic.mjs';
+import { angle, checkFraming, createCounter, createTracker, makeBaseline, measure, rawMeasure } from '../js/squat-logic.mjs';
 import { makePose, timeline } from './pose-sim.mjs';
 
 const diff = DIFFICULTIES.standard;
@@ -103,13 +103,68 @@ test('站位檢查', () => {
   assert.equal(checkFraming(null).ok, false);
 });
 
-test('多人：揀可信度最高並提示', () => {
-  const a = makePose(0, { visibility: 0.9 });
-  const b = makePose(0, { visibility: 0.7, dx: 0.2 });
-  const r = pickPose([b, a]);
-  assert.equal(r.pose, a);
+test('多人：揀畫面最中間的人，即使旁人可信度較高', () => {
+  const side = makePose(0, { visibility: 0.99, dx: -0.3 });
+  const mid = makePose(0, { visibility: 0.8, dx: 0.05 });
+  const tr = createTracker();
+  const r = tr.update([side, mid], 0);
+  assert.equal(r.pose, mid);
   assert.equal(r.multiple, true);
-  assert.equal(pickPose([a]).multiple, false);
+  assert.deepEqual(r.people.map((p) => p.tracked), [false, true]);
+  assert.equal(createTracker().update([mid], 0).multiple, false);
+});
+
+test('鎖定後：有人行入中間都繼續追原本的人', () => {
+  const tr = createTracker();
+  const me = (dx) => makePose(0, { dx });
+  tr.update([me(0.1)], 0);
+  // 玩家稍為移動，另一人站到正中
+  let t = 0;
+  for (let i = 0; i < 30; i++) {
+    t += 1 / 30;
+    const r = tr.update([makePose(0, { dx: 0 }), me(0.1 + i * 0.003)].reverse(), t);
+    assert.ok(Math.abs(r.pose[0].x - (0.6 + i * 0.003)) < 1e-9, '應追原本的人');
+  }
+});
+
+test('鎖定的人短暫消失唔會轉追旁人；消失太耐先改揀中間的人', () => {
+  const tr = createTracker();
+  const me = makePose(0, { dx: 0.25 });
+  const other = makePose(0, { dx: -0.05 });
+  tr.update([me], 0);
+  let r = tr.update([other], 0.5);
+  assert.equal(r.pose, null);
+  assert.equal(r.switched, false);
+  r = tr.update([me, other], 1.0);
+  assert.equal(r.pose, me);
+  r = tr.update([other], 3.0);
+  assert.equal(r.pose, other);
+  assert.equal(r.switched, true);
+});
+
+test('未鎖定（站位階段）每幀揀最中間；撳選可手動指定', () => {
+  const tr = createTracker();
+  const a = makePose(0, { dx: 0.2 });
+  const b = makePose(0, { dx: -0.3 });
+  assert.equal(tr.update([a], 0, false).pose, a);
+  const c = makePose(0, { dx: 0 });
+  assert.equal(tr.update([a, c], 0.1, false).pose, c);
+  assert.equal(tr.selectAt(0.2, 0.5, [a, b, c], 0.2), true);
+  assert.equal(tr.update([a, b, c], 0.3, false).pose, b, '手動指定後唔會被自動揀中間覆蓋');
+  assert.equal(tr.selectAt(0.95, 0.05, [a, b, c], 0.4), false);
+});
+
+test('換人時中斷未完成的一下但保留次數', () => {
+  const c = createCounter();
+  const base = makeBaseline([rawMeasure(makePose(0))]);
+  let t = 0;
+  for (const phi of [0, 0, 30, 60, 60, 30, 0, 0]) { t += 0.3; c.update(measure(makePose(phi), base, diff), t); }
+  assert.equal(c.reps, 1);
+  for (const phi of [0, 30, 60]) { t += 0.3; c.update(measure(makePose(phi), base, diff), t); }
+  c.interrupt();
+  for (const phi of [60, 30, 0, 0]) { t += 0.3; c.update(measure(makePose(phi), base, diff), t); }
+  assert.equal(c.reps, 1);
+  assert.equal(c.state, 'standing');
 });
 
 // 以真人正面相片經 PoseLandmarker 量得的數值（見 docs/TEST-RESULTS.md）

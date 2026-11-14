@@ -142,3 +142,43 @@ test('60 秒挑戰：時間到自動結束', async ({ page }) => {
   await expect(page.locator('#resultMode')).toHaveText('60 秒挑戰');
   await expect(page.locator('#resultTime')).toHaveText('1:00.0');
 });
+
+test('多人：追蹤中間的人並畫框；旁人蹲都唔計；撳旁人可以轉追', async ({ page }) => {
+  await page.goto('/?sim');
+  await page.getByRole('button', { name: '開始' }).click();
+  // 旁人（可信度較高、企喺左邊）不停深蹲；玩家企中間
+  const run = (segs, sidePhi) => page.evaluate(async ([segs, sidePhi]) => {
+    const { makePose, timeline } = await import('/tests/pose-sim.mjs');
+    const t0 = performance.now();
+    for (const f of timeline(segs)) {
+      const wait = t0 + f.t * 1000 - performance.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      const side = makePose(sidePhi === 'squat' ? 60 * Math.abs(Math.sin(f.t * 2)) : 0, { dx: -0.32, visibility: 0.99 });
+      window.__sport.inject([side, makePose(f.phi, { dx: 0.02, visibility: 0.85 })]);
+    }
+  }, [segs, sidePhi]);
+  await run([[0, 2.6]], 'stand');
+  await expect.poll(() => page.evaluate(() => window.__sport.phase)).toBe('countdown');
+  const people = await page.evaluate(() => window.__sport.people);
+  expect(people.length).toBe(2);
+  expect(Math.abs((await page.evaluate(() => window.__sport.trackedCx)) - 0.52)).toBeLessThan(0.01);
+  await page.screenshot({ path: 'test-results/multi-person.png' });
+  await run([[0, 3.6]], 'stand');
+  await expect.poll(() => page.evaluate(() => window.__sport.phase)).toBe('play');
+  const squat = [[0, 0.4], [60, 0.8], [60, 0.2], [0, 0.8]];
+  await run([[0, 0.3], ...squat, ...squat], 'squat');
+  await expect(page.locator('#count')).toHaveText('2');
+  // 撳左邊旁人（畫面鏡像，旁人顯示喺右邊）
+  const box = await page.locator('#stage').boundingBox();
+  const geo = await page.evaluate(() => {
+    const r = document.getElementById('overlay').getBoundingClientRect();
+    return { w: r.width, h: r.height };
+  });
+  const side = 0.5 - 0.32;
+  // SIM 模式畫面比例 = 畫布比例，故 x 直接按闊度換算
+  await page.mouse.click(box.x + geo.w * (1 - side), box.y + geo.h * 0.6);
+  await expect(page.locator('#toast')).toHaveText(/已轉為追蹤/);
+  await run([[0, 0.3]], 'stand');
+  expect(Math.abs((await page.evaluate(() => window.__sport.trackedCx)) - side)).toBeLessThan(0.01);
+  expect(await page.evaluate(() => window.__sport.reps)).toBe(2);
+});

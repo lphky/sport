@@ -27,6 +27,10 @@ export const CONFIG = {
   minVisibility: 0.5,         // 關鍵點可信度
   smoothingAlpha: 0.5,        // EMA 平滑（0–1，越大越跟手）
 
+  trackHoldSeconds: 1.5,      // 鎖定的人消失多久先改揀其他人
+  trackMatchMin: 0.12,        // 每幀追蹤同一人容許的最少橫向移動（佔畫面闊度）
+  maxPoses: 3,                // 每幀最多偵測幾多人
+
   calibrateSeconds: 2,        // 站直多久完成校準
   calibrateMaxMove: 0.03,     // 校準期間髖部最大移動（佔畫面高度）
 };

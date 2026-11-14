@@ -103,6 +103,8 @@ export function createCounter(cfg = CONFIG) {
     get reps() { return s.reps; },
     get attempts() { return s.attempts; },
     reset() { Object.assign(s, { state: 'idle', reps: 0, attempts: 0, startT: 0, maxScore: 0, lostSince: null }); },
+    // 換了追蹤對象：中斷未完成的一下，要先企直再數（不清除次數）
+    interrupt() { Object.assign(s, { state: 'idle', startT: 0, maxScore: 0, lostSince: null }); },
     // m: measure() 結果；若追蹤不到傳 null。t: 秒。回傳事件陣列。
     update(m, t) {
       const ev = [];
@@ -150,11 +152,63 @@ export function createCounter(cfg = CONFIG) {
   return api;
 }
 
-// 揀可信度最高的一人；回傳 { pose, multiple }
-export function pickPose(poses, minVis = CONFIG.minVisibility) {
-  if (!poses || !poses.length) return { pose: null, multiple: false };
-  const scored = poses.map((p) => ({ p, s: p.reduce((a, q) => a + vis(q), 0) / p.length }));
-  scored.sort((a, b) => b.s - a.s);
-  const good = scored.filter((x) => x.s >= minVis).length;
-  return { pose: scored[0].p, multiple: good > 1 };
+// 一個人的範圍框（只計可見關鍵點）及中心
+export function personBox(lms, minVis = 0.3) {
+  let pts = lms.filter((p) => vis(p) >= minVis);
+  if (pts.length < 4) pts = lms;
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const core = [LM.lShoulder, LM.rShoulder, LM.lHip, LM.rHip].map((i) => lms[i]);
+  const coreVis = core.reduce((a, p) => a + vis(p), 0) / core.length;
+  const cx = coreVis >= 0.5 ? core.reduce((a, p) => a + p.x, 0) / core.length : (x0 + x1) / 2;
+  return { x0, x1, y0, y1, cx, w: x1 - x0, h: y1 - y0, coreVis };
+}
+
+// 揀畫面中間的人並鎖定：鎖定後只跟同一人；人消失超過 trackHoldSeconds 才重新揀。
+// 用 selectAt() 可手動指定追蹤某人。
+// update() 回傳 { pose, people:[{box, tracked}], multiple, switched }
+export function createTracker(cfg = CONFIG) {
+  let lock = null; // { cx, w, h, seenT, manual }
+  const closest = (list, x) => list.reduce((a, c) => (Math.abs(c.box.cx - x) < Math.abs(a.box.cx - x) ? c : a));
+  const matches = (b) => {
+    const ratio = b.h / Math.max(0.01, lock.h);
+    return Math.abs(b.cx - lock.cx) <= Math.max(cfg.trackMatchMin, lock.w * 0.6) && ratio > 0.5 && ratio < 2;
+  };
+  const people = (poses) => (poses || []).map((p) => ({ p, box: personBox(p) }));
+  return {
+    get locked() { return !!lock; },
+    get manual() { return !!lock?.manual; },
+    reset() { lock = null; },
+    // x, y：未鏡像的畫面座標（0–1）
+    selectAt(x, y, poses, t) {
+      const hit = people(poses).filter(({ box: b }) => x >= b.x0 - 0.03 && x <= b.x1 + 0.03 && y >= b.y0 - 0.05 && y <= b.y1 + 0.05);
+      if (!hit.length) return false;
+      const c = closest(hit, x);
+      lock = { cx: c.box.cx, w: c.box.w, h: c.box.h, seenT: t, manual: true };
+      return true;
+    },
+    // autoLock = false：未手動指定時每幀重新揀中間的人（站位未完成時用）
+    update(poses, t, autoLock = true) {
+      if (!autoLock && lock && !lock.manual) lock = null;
+      const list = people(poses);
+      const multiple = list.filter((x) => x.box.coreVis >= cfg.minVisibility).length > 1;
+      let chosen = null, switched = false;
+      if (lock && list.length) {
+        const m = list.filter((x) => matches(x.box));
+        if (m.length) chosen = closest(m, lock.cx);
+      }
+      if (!chosen && lock && t - lock.seenT <= cfg.trackHoldSeconds) {
+        // 鎖定的人暫時睇唔到：唔轉去追其他人
+        return { pose: null, people: list.map((x) => ({ box: x.box, tracked: false })), multiple, switched };
+      }
+      if (!chosen && list.length) {
+        const good = list.filter((x) => x.box.coreVis >= cfg.minVisibility);
+        chosen = closest(good.length ? good : list, 0.5);
+        switched = !!lock;
+        lock = null;
+      }
+      if (chosen) lock = { cx: chosen.box.cx, w: chosen.box.w, h: chosen.box.h, seenT: t, manual: !!lock?.manual };
+      return { pose: chosen ? chosen.p : null, people: list.map((x) => ({ box: x.box, tracked: x === chosen })), multiple, switched };
+    },
+  };
 }

@@ -2,7 +2,7 @@ import {
   CONFIG, DIFFICULTIES, STORAGE_PREFIX, MODEL_LOCAL, MODEL_CDN, VISION_LOCAL, VISION_CDN, WASM_LOCAL, WASM_CDN,
 } from './config.mjs';
 import {
-  checkFraming, createCounter, createSmoother, makeBaseline, measure, pickPose, rawMeasure,
+  checkFraming, createCounter, createSmoother, createTracker, makeBaseline, measure, rawMeasure,
 } from './squat-logic.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -30,6 +30,9 @@ let simPoses = null;
 let lastPose = null;
 const smoother = createSmoother();
 const counter = createCounter();
+const tracker = createTracker();
+let lastPoses = null;
+let lastPeople = [];
 let calib = { samples: [], since: 0 };
 let baseline = null;
 let game = null;
@@ -226,7 +229,7 @@ async function createLandmarker() {
   const fileset = { wasmLoaderPath: `${wasm}/vision_wasm_internal.js`, wasmBinaryPath: `${wasm}/vision_wasm_internal.wasm` };
   const opts = (model, delegate) => ({
     baseOptions: { modelAssetPath: model, delegate },
-    runningMode: 'VIDEO', numPoses: 2,
+    runningMode: 'VIDEO', numPoses: CONFIG.maxPoses,
     minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
   });
   const delegates = params.has('cpu') ? ['CPU'] : ['GPU', 'CPU'];
@@ -280,6 +283,7 @@ function restartSetup() {
   calib = { samples: [], since: 0 };
   smoother.reset();
   counter.reset();
+  tracker.reset();
   $('hud').classList.add('hidden');
   $('guide').classList.remove('hidden', 'ok');
   $('calibBar').classList.add('hidden');
@@ -392,15 +396,18 @@ function frame() {
   try { r = getPoses(now); } catch (e) { console.error(e); return; }
   if (!r.fresh) { if (phase === 'play') updateHud(); return; }
 
-  const { pose, multiple } = pickPose(r.poses);
+  lastPoses = r.poses;
+  // 站位未開始校準前，每幀重新揀最中間的人；開始校準後鎖定同一人
+  const autoLock = phase !== 'setup' || calib.samples.length > 0;
+  const tr = tracker.update(r.poses, t, autoLock);
+  if (tr.switched) onPersonSwitch();
+  const pose = tr.pose;
   const framing = checkFraming(pose);
   const lms = framing.ok || (pose && phase === 'play') ? smoother.push(pose) : (smoother.reset(), null);
   if (pose) lastSeenPose = t;
   lastPose = lms;
-  draw(lms, framing.ok);
-
-  if (multiple) { toastLock = 'multi'; toast('請確保畫面只有一人', 'warn', 0, 'multi'); }
-  else if (toastLock === 'multi') { toastLock = ''; toast(''); }
+  lastPeople = tr.people;
+  draw(lms, framing.ok, tr.people, tr.multiple);
 
   if (phase === 'setup') return setupFrame(lms, framing, t, r.aspect);
   if (phase === 'play' && !game.paused) playFrame(lms, framing, t, r.aspect);
@@ -491,21 +498,74 @@ function updateHud() {
   }
 }
 
+function onPersonSwitch() {
+  smoother.reset();
+  if (phase === 'setup') { calib = { samples: [], since: 0 }; $('calibBar').classList.add('hidden'); }
+  if (phase === 'play') counter.interrupt();
+}
+
+// 撳畫面上的人：改為追蹤佢
+$('stage').addEventListener('click', (e) => {
+  if (!['setup', 'countdown', 'play'].includes(phase) || !lastPoses?.length) return;
+  if (e.target.closest('button')) return;
+  const g = stageGeom();
+  const x = (g.rect.right - e.clientX - g.ox) / g.w;   // 畫面經 CSS 鏡像
+  const y = (e.clientY - g.rect.top - g.oy) / g.h;
+  if (tracker.selectAt(x, y, lastPoses, performance.now() / 1000)) {
+    onPersonSwitch();
+    toast('已轉為追蹤呢個人', 'ok', 1500);
+  }
+});
+
 // ---------- 繪圖 ----------
-const BONES = [[11, 12], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28], [11, 13], [13, 15], [12, 14], [14, 16]];
-function draw(lms, ok) {
+function stageGeom() {
   const rect = canvas.getBoundingClientRect();
+  const va = SIM ? rect.width / rect.height : (video.videoWidth / video.videoHeight) || 16 / 9;
+  let w = rect.width, h = rect.width / va;
+  if (h > rect.height) { h = rect.height; w = h * va; }
+  return { rect, va, w, h, ox: (rect.width - w) / 2, oy: (rect.height - h) / 2 };
+}
+function drawPeople(people, ok, multiple, g) {
+  const pad = 0.02;
+  for (const { box: b, tracked } of [...people].sort((a, c) => a.tracked - c.tracked)) {
+    const x = g.ox + (b.x0 - pad) * g.w, y = g.oy + (b.y0 - pad * 2) * g.h;
+    const bw = (b.w + pad * 2) * g.w, bh = (b.h + pad * 4) * g.h;
+    ctx.save();
+    if (tracked) {
+      ctx.strokeStyle = ok ? '#b6ff3b' : '#ffb547';
+      ctx.lineWidth = 4; ctx.setLineDash([]);
+    } else {
+      ctx.strokeStyle = 'rgba(255,255,255,.45)';
+      ctx.lineWidth = 2; ctx.setLineDash([8, 8]);
+    }
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, bw, bh, 14) : ctx.rect(x, y, bw, bh); ctx.stroke();
+    // 標籤：畫布經 CSS 鏡像，文字要反轉；標籤貼框的畫面左上角
+    const label = tracked ? (multiple ? '✓ 追蹤緊呢位' : '✓ 追蹤中') : '未追蹤（撳一下轉追佢）';
+    ctx.scale(-1, 1);
+    ctx.font = `bold ${tracked ? 18 : 14}px system-ui, sans-serif`;
+    const tw = ctx.measureText(label).width + 16, th = tracked ? 28 : 24;
+    const lx = -(x + bw), ly = Math.max(0, y - th - 4);
+    ctx.fillStyle = tracked ? (ok ? '#b6ff3b' : '#ffb547') : 'rgba(0,0,0,.6)';
+    ctx.fillRect(lx, ly, tw, th);
+    ctx.fillStyle = tracked ? '#0b0f14' : 'rgba(255,255,255,.85)';
+    ctx.fillText(label, lx + 8, ly + th - 8);
+    ctx.restore();
+  }
+}
+
+const BONES = [[11, 12], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28], [11, 13], [13, 15], [12, 14], [14, 16]];
+function draw(lms, ok, people = [], multiple = false) {
+  const g = stageGeom();
+  const rect = g.rect;
   const dpr = window.devicePixelRatio || 1;
   if (canvas.width !== Math.round(rect.width * dpr) || canvas.height !== Math.round(rect.height * dpr)) {
     canvas.width = Math.round(rect.width * dpr); canvas.height = Math.round(rect.height * dpr);
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, rect.width, rect.height);
+  drawPeople(people, ok, multiple, g);
   if (!settings.skeleton || !lms) return;
-  const va = SIM ? rect.width / rect.height : (video.videoWidth / video.videoHeight) || 16 / 9;
-  let w = rect.width, h = rect.width / va;
-  if (h > rect.height) { h = rect.height; w = h * va; }
-  const ox = (rect.width - w) / 2, oy = (rect.height - h) / 2;
+  const { va, w, h, ox, oy } = g;
   const P = (p) => [ox + p.x * w, oy + p.y * h];
   ctx.lineWidth = 5; ctx.lineCap = 'round';
   ctx.strokeStyle = ok ? 'rgba(182,255,59,.9)' : 'rgba(255,181,71,.9)';
@@ -589,6 +649,8 @@ if (SIM) {
     get state() { return counter.state; },
     get elapsed() { return game?.elapsed ?? 0; },
     get detectMs() { return detectMs; },
+    get people() { return lastPeople.map((p) => ({ cx: p.box.cx, tracked: p.tracked })); },
+    get trackedCx() { return lastPeople.find((p) => p.tracked)?.box.cx ?? null; },
   };
 }
 
