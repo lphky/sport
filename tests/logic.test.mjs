@@ -1,199 +1,198 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DIFFICULTIES } from '../js/config.mjs';
-import { angle, checkFraming, createCounter, createTracker, makeBaseline, measure, rawMeasure } from '../js/squat-logic.mjs';
-import { makePose, timeline } from './pose-sim.mjs';
+import { createPlayer } from '../js/player.mjs';
+import { createTracker } from '../js/tracker.mjs';
+import { EXERCISES } from '../js/exercises.mjs';
+import { makeFrame } from '../js/geometry.mjs';
+import { MOVES, prone, reps, standing, supine, timeline } from './pose-sim.mjs';
 
-const diff = DIFFICULTIES.standard;
-const baseline = makeBaseline([rawMeasure(makePose(0))]);
-
-function run(segments, d = diff) {
-  const c = createCounter();
+const pose = (lm) => ({ lm, world: null });
+function run(exercise, frames, { level = 'standard', zone = [0, 1], extra = () => [] } = {}) {
+  const pl = createPlayer({ exercise, level, zone });
   const events = [];
-  for (const f of timeline(segments)) {
-    const m = f.phi === null ? null : measure(makePose(f.phi), baseline, d);
-    events.push(...c.update(m, f.t));
+  for (const f of frames) {
+    const poses = [...(f.lm ? [pose(f.lm)] : []), ...extra(f)];
+    events.push(...pl.update(poses, f.t, 1, 'play').events.map((e) => e.type));
   }
-  return { reps: c.reps, attempts: c.attempts, events, state: c.state };
+  return { score: pl.score, attempts: pl.counter.attempts, events, pl };
+}
+const lead = [[0, 0.5]];
+
+for (const [ex, move] of [['squat', 'squat'], ['jack', 'jack'], ['pushup', 'pushup'], ['situp', 'situp']]) {
+  test(`${EXERCISES[ex].name}：5 下完整動作 → 5`, () => {
+    const r = run(ex, timeline(move, [...lead, ...reps(5)]));
+    assert.equal(r.score, 5);
+    assert.equal(r.attempts, 5);
+  });
+  test(`${EXERCISES[ex].name}：3 下做一半 → 0，並提示未夠`, () => {
+    const r = run(ex, timeline(move, [...lead, ...reps(3, 0.6, 0.6, { squat: 0.4, jack: 0.6 }[ex] ?? 0.62)]));
+    assert.equal(r.score, 0);
+    assert.equal(r.events.filter((e) => e === 'shallow').length, 3);
+  });
+  test(`${EXERCISES[ex].name}：到位線附近抖動 → 只計 1`, () => {
+    const jitter = Array.from({ length: 12 }, (_, i) => [i % 2 ? 0.93 : 1.0, 0.07]);
+    const r = run(ex, timeline(move, [...lead, [0.95, 0.6], ...jitter, [0, 0.6], [0, 0.3]]));
+    assert.equal(r.score, 1);
+  });
+  test(`${EXERCISES[ex].name}：起始姿勢附近晃動 → 0`, () => {
+    const wobble = Array.from({ length: 20 }, (_, i) => [i % 2 ? 0.12 : 0, 0.15]);
+    assert.equal(run(ex, timeline(move, [...lead, ...wobble])).score, 0);
+  });
+  test(`${EXERCISES[ex].name}：做到一半離開畫面 → 不計，返回後要重新由起始姿勢開始`, () => {
+    const r = run(ex, timeline(move, [...lead, [1, 0.6], [null, 1.5], [0, 0.1], [0, 0.5], ...reps(2)]));
+    assert.equal(r.score, 2);
+    assert.ok(r.events.includes('lost') && r.events.includes('back'));
+  });
+  test(`${EXERCISES[ex].name}：極快動作（雜訊）→ 不計`, () => {
+    const r = run(ex, timeline(move, [...lead, [1, 0.07], [0, 0.07], [0, 0.4]]));
+    assert.equal(r.score, 0);
+  });
+  test(`${EXERCISES[ex].name}：未返回起始姿勢就再做 → 只計返回的次數`, () => {
+    // 落到位 → 只升返一半 → 再落 → 完全返回：只算 1 下
+    const r = run(ex, timeline(move, [...lead, [1, 0.6], [0.5, 0.4], [1, 0.4], [0, 0.6], [0, 0.3]]));
+    assert.equal(r.score, 1);
+  });
 }
 
-const fullSquat = [[0, 0.4], [60, 0.8], [60, 0.2], [0, 0.8]];
-
-test('angle：直線 180°、直角 90°', () => {
-  assert.equal(Math.round(angle({ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 0, y: 2 })), 180);
-  assert.equal(Math.round(angle({ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 })), 90);
-});
-
-test('完整深蹲 ×5 → 5', () => {
-  const r = run([[0, 0.5], ...Array(5).fill(fullSquat).flat()]);
-  assert.equal(r.reps, 5);
-  assert.equal(r.attempts, 5);
-});
-
-test('半蹲 ×3 → 0 次，嘗試 3', () => {
-  const half = [[0, 0.4], [12, 0.6], [0, 0.6]];
-  const r = run([[0, 0.5], ...Array(3).fill(half).flat()]);
-  assert.equal(r.reps, 0);
-  assert.equal(r.attempts, 3);
-  assert.equal(r.events.filter((e) => e === 'shallow').length, 3);
-});
-
-test('合格線附近抖動 → 不重複計數', () => {
-  const m = measure(makePose(40), baseline, diff);
-  assert.ok(m.score > 1, 'phi 40 應過合格線');
-  const jitter = [];
-  for (let i = 0; i < 20; i++) jitter.push([i % 2 ? 36 : 40, 0.1]);
-  const r = run([[0, 0.5], [40, 0.8], ...jitter, [0, 0.8]]);
-  assert.equal(r.reps, 1);
-});
-
-test('站立時輕微晃動 → 不算嘗試', () => {
-  const sway = [];
-  for (let i = 0; i < 20; i++) sway.push([i % 2 ? 0 : 8, 0.15]);
-  const r = run([[0, 0.5], ...sway]);
-  assert.equal(r.reps, 0);
-  assert.equal(r.attempts, 0);
-});
-
-test('中途離開畫面 → 不誤計，回來要先站直', () => {
-  const r = run([[0, 0.5], [60, 0.8], [null, 1.0], [60, 0.3], [0, 0.8]]);
-  assert.equal(r.reps, 0);
-  assert.ok(r.events.includes('lost'));
-  assert.ok(r.events.includes('back'));
-  const r2 = run([[0, 0.5], [60, 0.8], [null, 1.0], [0, 0.3], ...fullSquat]);
-  assert.equal(r2.reps, 1);
-});
-
-test('短暫失去追蹤 (<0.5 秒) 不中斷', () => {
-  const r = run([[0, 0.5], [60, 0.8], [null, 0.2], [60, 0.1], [0, 0.8]]);
-  assert.equal(r.reps, 1);
-});
-
-test('極快動作 (<0.5 秒) → 不計', () => {
-  const r = run([[0, 0.5], [60, 0.15], [0, 0.15], [0, 0.5]]);
-  assert.equal(r.reps, 0);
-  assert.ok(r.events.includes('tooFast'));
-});
-
-test('難度：同一深度在「深蹲」難度不合格', () => {
-  const seg = [[0, 0.5], [16, 0.8], [16, 0.2], [0, 0.8]];
-  assert.equal(run(seg, DIFFICULTIES.standard).reps, 1);
-  assert.equal(run(seg, DIFFICULTIES.deep).reps, 0);
-});
-
-test('上身前傾 → lean 提示但照計', () => {
-  const c = createCounter();
-  const ev = [];
-  let t = 0;
-  for (const [phi, lean] of [[0, 0], [0, 0], ...Array(20).fill([30, 60]), ...Array(20).fill([60, 60]), ...Array(30).fill([0, 0])]) {
-    t += 1 / 30;
-    ev.push(...c.update(measure(makePose(phi, { lean }), baseline, diff), t));
-  }
-  assert.ok(ev.includes('lean'));
-  assert.equal(c.reps, 1);
-});
-
-test('站位檢查', () => {
-  assert.equal(checkFraming(makePose(0)).ok, true);
-  const noAnkle = makePose(0);
-  noAnkle[27].visibility = 0.1;
-  const r = checkFraming(noAnkle);
-  assert.equal(r.ok, false);
-  assert.match(r.hint, /腳踝/);
-  assert.equal(checkFraming(null).ok, false);
-});
-
-test('多人：揀畫面最中間的人，即使旁人可信度較高', () => {
-  const side = makePose(0, { visibility: 0.99, dx: -0.3 });
-  const mid = makePose(0, { visibility: 0.8, dx: 0.05 });
-  const tr = createTracker();
-  const r = tr.update([side, mid], 0);
-  assert.equal(r.pose, mid);
-  assert.equal(r.multiple, true);
-  assert.deepEqual(r.people.map((p) => p.tracked), [false, true]);
-  assert.equal(createTracker().update([mid], 0).multiple, false);
-});
-
-test('鎖定後：有人行入中間都繼續追原本的人', () => {
-  const tr = createTracker();
-  const me = (dx) => makePose(0, { dx });
-  tr.update([me(0.1)], 0);
-  // 玩家稍為移動，另一人站到正中
-  let t = 0;
-  for (let i = 0; i < 30; i++) {
-    t += 1 / 30;
-    const r = tr.update([makePose(0, { dx: 0 }), me(0.1 + i * 0.003)].reverse(), t);
-    assert.ok(Math.abs(r.pose[0].x - (0.6 + i * 0.003)) < 1e-9, '應追原本的人');
+test('三個級別的門檻：同一個中等幅度動作，輕鬆計、嚴格不計', () => {
+  for (const [ex, move, k] of [['squat', 'squat', 0.5], ['pushup', 'pushup', 0.72], ['situp', 'situp', 0.62], ['jack', 'jack', 0.8]]) {
+    const frames = timeline(move, [...lead, ...reps(3, 0.6, 0.6, k)]);
+    assert.equal(run(ex, frames, { level: 'easy' }).score, 3, `${ex} easy`);
+    assert.equal(run(ex, frames, { level: 'strict' }).score, 0, `${ex} strict`);
   }
 });
 
-test('鎖定的人走咗：唔自動轉追旁人，等撳選重新鎖定；返原位會自動接返', () => {
-  const tr = createTracker();
-  const me = makePose(0, { dx: 0.25 });
-  const other = makePose(0, { dx: -0.05 });
-  tr.update([me], 0);
-  let r = tr.update([other], 0.5);
-  assert.equal(r.pose, null);
-  assert.equal(r.lost, false, '短暫消失未算走咗');
-  r = tr.update([me, other], 1.0);
-  assert.equal(r.pose, me);
-  for (const t of [3, 10, 60]) {
-    r = tr.update([other], t);
-    assert.equal(r.pose, null, '走咗好耐都唔會轉追旁人');
-    assert.equal(r.lost, true);
-    assert.equal(tr.lost, true);
+test('開合跳：只舉手唔開腳、只開腳唔舉手 → 0', () => {
+  const armsOnly = timeline('jack', [...lead, ...reps(3)]).map((f) => ({ ...f, lm: standing({ arm: 12 + 158 * f.k }) }));
+  const legsOnly = timeline('jack', [...lead, ...reps(3)]).map((f) => ({ ...f, lm: standing({ spread: 8 + 40 * f.k }) }));
+  assert.equal(run('jack', armsOnly).score, 0);
+  assert.equal(run('jack', legsOnly).score, 0);
+});
+
+test('高抬腿：左右交替各 5 次 → 10；提得唔夠高 → 0', () => {
+  const alt = (k) => Array.from({ length: 5 }, () => [[k, 0.2, 'kneeL'], [0, 0.2], [0, 0.01, 'kneeR'], [k, 0.2], [0, 0.2], [0, 0.01, 'kneeL']]).flat();
+  assert.equal(run('knees', timeline('kneeL', [...lead, ...alt(1)])).score, 10);
+  const low = run('knees', timeline('kneeL', [...lead, ...alt(0.6)]));
+  assert.equal(low.score, 0);
+  assert.equal(low.events.filter((e) => e === 'shallow').length, 10);
+});
+test('高抬腿：企喺度深蹲或開合跳 → 0', () => {
+  assert.equal(run('knees', timeline('jack', [...lead, ...reps(4)])).score, 0);
+});
+
+test('掌上壓：塌腰／翹臀 → 不計並報犯規；企喺度屈手 → 0', () => {
+  for (const sag of [0.2, -0.2]) {
+    const frames = timeline('pushup', [...lead, ...reps(3)], { opts: { sag } });
+    const r = run('pushup', frames);
+    assert.equal(r.score, 0, `sag ${sag}`);
+    assert.equal(r.events.filter((e) => e === 'fault').length, 3);
   }
-  // 撳旁人重新鎖定
-  assert.equal(tr.selectAt(0.45, 0.5, [other], 61), true);
-  r = tr.update([other], 61.1);
-  assert.equal(r.pose, other);
-  assert.equal(r.lost, false);
-  // 再走咗，原本嗰位返嚟原位都唔會搶走鎖定（距離太遠）
-  r = tr.update([me], 70);
-  assert.equal(r.pose, null);
-  assert.equal(r.lost, true);
-  // 鎖定的人返到原位：自動接返
-  r = tr.update([me, other], 71);
-  assert.equal(r.pose, other);
-  assert.equal(r.lost, false);
+  const standingCurl = timeline('squat', [...lead, ...reps(3)]);
+  assert.equal(run('pushup', standingCurl).score, 0);
+});
+test('掌上壓：只郁頭／手踭有雜訊但膊頭無落 → 0', () => {
+  // 膊頭高度不變，只有手踭點左右飄（模擬偵測雜訊）
+  const frames = timeline('pushup', [...lead, ...reps(4)]).map((f) => {
+    const lm = prone({ elbow: 175 });
+    for (const i of [13, 14]) lm[i].x += 0.09 * f.k;
+    return { ...f, lm };
+  });
+  assert.equal(run('pushup', frames).score, 0);
 });
 
-test('未鎖定（站位階段）每幀揀最中間；撳選可手動指定', () => {
-  const tr = createTracker();
-  const a = makePose(0, { dx: 0.2 });
-  const b = makePose(0, { dx: -0.3 });
-  assert.equal(tr.update([a], 0, false).pose, a);
-  const c = makePose(0, { dx: 0 });
-  assert.equal(tr.update([a, c], 0.1, false).pose, c);
-  assert.equal(tr.selectAt(0.2, 0.5, [a, b, c], 0.2), true);
-  assert.equal(tr.update([a, b, c], 0.3, false).pose, b, '手動指定後唔會被自動揀中間覆蓋');
-  assert.equal(tr.selectAt(0.95, 0.05, [a, b, c], 0.4), false);
+test('仰臥起坐：企喺度彎腰、伸直腳瞓 → 0', () => {
+  assert.equal(run('situp', timeline('squat', [...lead, ...reps(3)]).map((f) => ({ ...f, lm: standing({ lean: 70 * f.k }) }))).score, 0);
+  assert.equal(run('situp', timeline('situp', [...lead, ...reps(3)], { opts: { legsFlat: true } })).score, 0);
 });
 
-test('換人時中斷未完成的一下但保留次數', () => {
-  const c = createCounter();
-  const base = makeBaseline([rawMeasure(makePose(0))]);
+test('深蹲：只係彎腰鞠躬 → 0', () => {
+  const bow = timeline('squat', [...lead, ...reps(3)]).map((f) => ({ ...f, lm: standing({ lean: 75 * f.k }) }));
+  assert.equal(run('squat', bow).score, 0);
+});
+test('深蹲：行近鏡頭後（身形變大）仍然準確', () => {
+  const a = timeline('squat', [...lead, ...reps(2)]);
+  const b = timeline('squat', [[0, 0.8], ...reps(3)], { opts: { s: 1.25, floor: 0.97 }, t0: a.at(-1).t });
+  assert.equal(run('squat', [...a, ...b]).score, 5);
+});
+
+test('平板支撐：保持 5 秒 → 約 5 秒；塌腰、趴低都停止計時', () => {
+  const r = run('plank', timeline('plank', [[0, 5.5]]));
+  assert.ok(Math.abs(r.score - 5.5) < 0.2, `got ${r.score}`);
+  const sagged = run('plank', timeline('plank', [[0, 2], [1, 0.3], [1, 3], [0, 0.3], [0, 2]]));
+  assert.ok(sagged.score > 3.6 && sagged.score < 4.9, `got ${sagged.score}`);
+  assert.ok(sagged.events.includes('holdBreak'));
+  const flat = timeline('plank', [[0, 3]]).map((f) => ({ ...f, lm: prone({ flat: true, forearm: true }) }));
+  assert.equal(run('plank', flat).score, 0);
+  const high = run('plank', timeline('plank', [[0, 3]]).map((f) => ({ ...f, lm: prone({ elbow: 175 }) })));
+  assert.ok(high.score > 2.7, '撐直手的平板支撐亦計');
+});
+test('平板支撐：企喺度 → 0', () => {
+  assert.equal(run('plank', timeline('squat', [[0, 3]])).score, 0);
+});
+
+test('預備姿勢：要連續保持 1.5 秒先完成', () => {
+  const pl = createPlayer({ exercise: 'squat' });
   let t = 0;
-  for (const phi of [0, 0, 30, 60, 60, 30, 0, 0]) { t += 0.3; c.update(measure(makePose(phi), base, diff), t); }
-  assert.equal(c.reps, 1);
-  for (const phi of [0, 30, 60]) { t += 0.3; c.update(measure(makePose(phi), base, diff), t); }
-  c.interrupt();
-  for (const phi of [60, 30, 0, 0]) { t += 0.3; c.update(measure(makePose(phi), base, diff), t); }
-  assert.equal(c.reps, 1);
-  assert.equal(c.state, 'standing');
+  const step = (lm, secs) => { for (let i = 0; i < secs * 30; i++) { t += 1 / 30; pl.update(lm ? [pose(lm)] : [], t, 1, 'ready'); } };
+  step(standing({ bend: 30 }), 2); assert.equal(pl.isReady, false);
+  step(standing(), 1); assert.equal(pl.isReady, false);
+  step(standing({ bend: 30 }), 0.3); step(standing(), 1); assert.equal(pl.isReady, false, '中途郁咗要重新計');
+  step(standing(), 0.7); assert.equal(pl.isReady, true);
+  step(null, 0.5); assert.equal(pl.isReady, false, '走開要重新預備');
+});
+test('預備姿勢：各動作的正確與錯誤姿勢', () => {
+  const ready = (ex, lm) => EXERCISES[ex].measure(makeFrame(lm, null, 1), {}, 'standard').ready;
+  assert.ok(ready('squat', standing()) && ready('jack', standing()) && ready('knees', standing()));
+  assert.ok(!ready('jack', standing({ arm: 90 })));
+  assert.ok(ready('pushup', prone()) && !ready('pushup', prone({ elbow: 100 })) && !ready('pushup', standing()));
+  assert.ok(ready('situp', supine()) && !ready('situp', supine({ torso: 70 })) && !ready('situp', standing()));
+  assert.ok(ready('plank', prone({ forearm: true })) && !ready('plank', prone({ forearm: true, flat: true })));
+  assert.ok(!ready('squat', standing({ s: 0.3 })), '太遠');
 });
 
-// 以真人正面相片經 PoseLandmarker 量得的數值（見 docs/TEST-RESULTS.md）
-test('真人正面實測數值：大腿水平深蹲在「標準」及「深蹲」都合格，四分一蹲唔會開始計', () => {
-  const stand = { hipY: 0.5246, ankleY: 0.8828, kneeAngle: 179.8, lean: 2 };
-  const base = makeBaseline([stand]);
-  const fake = (raw) => {
-    const hipDrop = (raw.hipY - base.hipY) / base.legLen;
-    return (d) => Math.max(hipDrop / d.hipDrop, (170 - raw.kneeAngle) / (170 - d.kneeAngle));
-  };
-  const bottom = fake({ hipY: 0.6208, kneeAngle: 143.3 });
-  const quarter = fake({ hipY: 0.5386, kneeAngle: 172.7 });
-  assert.ok(bottom(DIFFICULTIES.standard) >= 1);
-  assert.ok(bottom(DIFFICULTIES.deep) >= 1);
-  assert.ok(quarter(DIFFICULTIES.easy) < 0.3);
+// ---------- 追蹤 ----------
+test('追蹤：多人時揀範圍中間的人；鎖定後旁人行到中間都唔轉', () => {
+  const tr = createTracker();
+  const P = (cx) => pose(standing({ cx, s: 0.8 }));
+  assert.equal(tr.update([P(0.2), P(0.55), P(0.85)], 0).index, 1);
+  assert.equal(tr.update([P(0.5), P(0.6)], 0.1).index, 1, '旁人行到正中都唔轉');
 });
+test('追蹤：鎖定的人走咗唔自動轉人；返回原位接返；撳畫面可重新鎖定', () => {
+  const tr = createTracker();
+  const P = (cx) => pose(standing({ cx, s: 0.8 }));
+  tr.update([P(0.5), P(0.2)], 0);
+  let r = tr.update([P(0.2)], 1); assert.equal(r.pose, null); assert.equal(r.lost, false);
+  r = tr.update([P(0.2)], 3); assert.equal(r.pose, null); assert.equal(r.lost, true);
+  r = tr.update([P(0.2), P(0.52)], 4); assert.equal(r.index, 1, '返回原位接返');
+  tr.update([P(0.2)], 6.1);
+  assert.equal(tr.selectAt(0.2, 0.6, [P(0.2)], 6.2), true);
+  assert.equal(tr.update([P(0.2)], 6.3).index, 0);
+});
+test('雙人：左右範圍各自追蹤、各自計數，互不影響；旁觀者不計', () => {
+  const a = createPlayer({ exercise: 'squat', zone: [0.5, 1] });
+  const b = createPlayer({ exercise: 'squat', zone: [0, 0.5] });
+  const fa = timeline('squat', [[0, 0.5], ...reps(5, 0.5, 0.5)], { opts: { cx: 0.75, s: 0.7 } });
+  const fb = timeline('squat', [[0, 0.5], ...reps(3, 0.9, 0.8)], { opts: { cx: 0.25, s: 0.7 } });
+  // 旁觀者企喺正中後面，佢都做深蹲
+  const fc = timeline('squat', [[0, 0.5], ...reps(5, 0.5, 0.5)], { opts: { cx: 0.5, s: 0.45, floor: 0.7 } });
+  for (let i = 0; i < fa.length; i++) {
+    const poses = [pose(fc[i].lm), pose(fa[i].lm), pose((fb[i] ?? fb.at(-1)).lm)];
+    const ra = a.update(poses, fa[i].t, 1, 'play');
+    b.update(poses, fa[i].t, 1, 'play', [ra.index]);
+  }
+  assert.equal(a.score, 5);
+  assert.equal(b.score, 3);
+});
+test('雙人：一位玩家走開，另一位唔會被當成佢', () => {
+  const a = createPlayer({ exercise: 'jack', zone: [0.5, 1] });
+  const b = createPlayer({ exercise: 'jack', zone: [0, 0.5] });
+  const fb = timeline('jack', [[0, 0.5], ...reps(4)], { opts: { cx: 0.25, s: 0.7 } });
+  fb.forEach((f, i) => {
+    const poses = [pose(f.lm), ...(i < 10 ? [pose(standing({ cx: 0.75, s: 0.7 }))] : [])];
+    const ra = a.update(poses, f.t, 1, 'play');
+    b.update(poses, f.t, 1, 'play', [ra.index].filter((x) => x >= 0));
+  });
+  assert.equal(a.score, 0);
+  assert.equal(b.score, 4);
+});
+void MOVES; void supine;
