@@ -64,7 +64,7 @@ export const EXERCISES = {
     id: 'squat', name: '深蹲', en: 'Squat', icon: '🏋️', kind: 'reps', unit: '下', view: '正面或側面企立', floor: false, channels: 1,
     readyText: '企直，全身入鏡',
     setup: '面向鏡頭企直，由頭到腳都要入鏡。',
-    rule: '蹲到大腿接近水平，再完全企直，先計一下。',
+    rule: '雙腳保持落地，蹲到大腿接近水平，再完全企直，先計一下。',
     shallow: '再蹲低啲',
     measure(f, base, level) {
       const th = T.squat[level], g = T.squat;
@@ -74,8 +74,23 @@ export const EXERCISES = {
       const k2 = kneeAngle2(f), k3 = kneeAngle3(f);
       const leg = c.ankle.y - c.hip.y;
       const straight = k2 >= g.straightKnee && upright(f, c);
-      if (straight) base.leg = ema(base.leg, leg);
-      const drop = base.leg ? 1 - leg / base.leg : 0;
+      const feet = [LM.lAnkle, LM.rAnkle];
+      const lifts = feet.map((i, j) => seen(f, i) && base.feet?.[j] != null && base.leg
+        ? Math.max(0, (base.feet[j] - f.p[i].y) / base.leg) : 0);
+      const lifted = Math.max(...lifts) > g.maxFootLift;
+      base.footLiftFrames = lifted ? (base.footLiftFrames ?? 0) + 1 : 0;
+      if (lifted) {
+        const msg = '雙腳保持落地，唔好抬腳；企直後重新開始';
+        return { ok: true, ch: [{ p: 0, rest: false }], ready: false, hint: msg, tip: msg, cancelRep: base.footLiftFrames >= g.footLiftFrames ? msg : null,
+          dbg: { '左腳離地%': lifts[0] * 100, '右腳離地%': lifts[1] * 100 } };
+      }
+      if (straight) {
+        base.leg = ema(base.leg, leg);
+        base.hip = ema(base.hip, c.hip.y);
+        base.feet ??= [null, null];
+        feet.forEach((i, j) => { if (seen(f, i)) base.feet[j] = ema(base.feet[j], f.p[i].y); });
+      }
+      const drop = base.leg ? (c.hip.y - base.hip) / base.leg : 0;
       // 正面程度：膊闊 ÷ 上身長（側面 ≈ 0.1–0.25，正面 ≈ 0.55 以上）
       const P = f.p;
       const torso = Math.hypot(c.sh.x - c.hip.x, c.sh.y - c.hip.y) || 1e-6;

@@ -216,3 +216,56 @@ test('雙人：一位玩家走開，另一位唔會被當成佢', () => {
   assert.equal(b.score, 4);
 });
 void MOVES; void supine;
+
+for (const level of ['easy', 'standard', 'strict']) {
+  test(`深蹲：${level} 左右提膝、踢腳及屈腳後踢都不計，之後正常深蹲仍計`, () => {
+    for (const side of ['L', 'R']) {
+      for (const kind of ['knee', 'kick', 'curl']) {
+        const frames = timeline('squat', [...lead, ...reps(3)]).map((f) => {
+          const lm = standing({ [`lift${side}`]: kind === 'knee' ? f.k : 0 });
+          const a = side === 'L' ? 27 : 28, k = a - 2;
+          if (kind !== 'knee') {
+            lm[a].y -= 0.32 * f.k;
+            lm[a].x += (kind === 'kick' ? 0.28 : -0.22) * f.k;
+            if (kind === 'kick') lm[k].y -= 0.16 * f.k;
+          }
+          return { ...f, lm };
+        });
+        const good = timeline('squat', [[0, 0.7], ...reps(2)], { t0: frames.at(-1).t });
+        assert.equal(run('squat', frames, { level }).score, 0, `${side} ${kind}`);
+        assert.equal(run('squat', [...frames, ...good], { level }).score, 2, `${side} ${kind} recovery`);
+      }
+    }
+  });
+}
+
+test('深蹲：蹲到底後短暫抬腳，即使大部分時間正常都不補計', () => {
+  const frames = timeline('squat', [...lead, [1, 0.6], [1, 2], [1, 0.2], [1, 0.2], [0, 0.6], [0, 0.5]]);
+  for (const f of frames) if (f.t > 3.1 && f.t < 3.4) f.lm[27].y -= 0.22;
+  assert.equal(run('squat', frames).score, 0);
+});
+
+test('深蹲：腳踝單幀雜訊不會取消正常一下', () => {
+  const frames = timeline('squat', [...lead, ...reps(2)]);
+  frames[38].lm[27].y -= 0.10;
+  assert.equal(run('squat', frames).score, 2);
+});
+
+test('深蹲：腳踝上移不能冒充髖部下降（正面 3D 及側面 2D）', () => {
+  for (const front of [false, true]) {
+    for (const level of ['easy', 'standard', 'strict']) {
+      const base = {};
+      const measure = (lm) => EXERCISES.squat.measure(makeFrame(lm, front ? lm : null, 1), base, level);
+      measure(standing());
+      for (const side of ['L', 'R']) {
+        const lm = standing({ [`lift${side}`]: 1 });
+        if (!front) lm[12].x = lm[11].x;
+        const m = measure(lm);
+        assert.equal(m.ready, false);
+        assert.equal(m.ch[0].rest, false);
+        assert.ok(m.ch[0].p < 1);
+        assert.match(m.tip, /雙腳保持落地/);
+      }
+    }
+  }
+});

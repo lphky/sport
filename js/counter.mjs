@@ -24,6 +24,14 @@ export function createCounter({ channels = 1, minRep = 0.5, cfg = CONFIG } = {})
       }
       s.lostSince = null;
       if (s.lost) { s.lost = false; ev.push({ type: 'back' }); }
+      if (m.cancelRep) {
+        if (ch.some((c) => !['idle', 'rest'].includes(c.state))) {
+          s.attempts++;
+          ev.push({ type: 'fault', msg: m.cancelRep });
+        }
+        ch = ch.map(mk);
+        return ev;
+      }
       m.ch.forEach((x, i) => {
         const c = ch[i];
         if (c.state !== 'idle' && c.state !== 'rest') { c.frames++; if (m.fault) { c.faults++; c.faultMsg = m.fault; } }

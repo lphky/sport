@@ -12,6 +12,7 @@ export const THRESHOLDS = {
     standard: { knee: 110, hipDrop: 0.19 },
     strict:   { knee: 95,  hipDrop: 0.27 },
     knee3Offset: 12, kneeLeniency: 0.8, restKnee: 160, restDrop: 0.10, straightKnee: 165, leanMax: 60, minRep: 0.4,
+    maxFootLift: 0.12, footLiftFrames: 2,
   },
   // 掌上壓（側面）：手踭角要屈到 elbow 以下，同時膊頭要降低 drop（佔撐直時膊頭離地高度的比例）。
   // line = 膊–髖–踝夾角下限（身體要成一直線）。allowKnee：容許跪膝掌上壓（膝角細過 kneeStraight 當作跪膝）。

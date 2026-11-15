@@ -188,3 +188,17 @@ test('版面：首頁及比賽畫面喺手機窄屏唔會重疊（截圖檢查�
   await page.screenshot({ path: 'test-results/home-mobile.png', fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test('深蹲：左右抬腳不加分，雙人同場正常深蹲照計', async ({ page }) => {
+  await setupGame(page, { players: 2 });
+  await drive(page, [
+    { move: 'kneeL', segments: [...READY, ...reps(2), [0, 0.02, 'kneeR'], ...reps(2), [0, 0.3]], opts: L },
+    { move: 'squat', segments: [...READY, ...reps(4), [0, 0.3]], opts: R },
+  ]);
+  expect(await scores(page)).toEqual([0, 4]);
+  await drive(page, [
+    { move: 'squat', segments: [[0, 0.5], ...reps(2), [0, 0.3]], opts: L },
+    { move: 'squat', segments: [[0, 3.5]], opts: R },
+  ]);
+  expect(await scores(page)).toEqual([2, 4]);
+});

@@ -93,7 +93,7 @@ const lowerWins = (s = setup) => s.mode === 'target';
 function levelNote(id, level) {
   const t = THRESHOLDS[id][level], pc = (v) => Math.round(v * 100);
   switch (id) {
-    case 'squat': return `膝頭屈到約 ${t.knee}° 或以下，髖部下降最少 ${pc(t.hipDrop)}%；彎腰唔屈膝唔計。`;
+    case 'squat': return `膝頭屈到約 ${t.knee}° 或以下，髖部下降最少 ${pc(t.hipDrop)}%；雙腳保持落地，抬腳或彎腰唔屈膝唔計。`;
     case 'pushup': return `手踭屈到 ${t.elbow}° 或以下，膊頭下降最少 ${pc(t.drop)}%，身體直線最少 ${t.line}°；${t.allowKnee ? '可以跪膝做。' : '膝頭唔可以落地。'}`;
     case 'situp': return `上身升到離地 ${t.up}° 或以上，再瞓返到 ${t.down}° 或以下。`;
     case 'jack': return `手臂舉到 ${t.arm}° 或以上，同時兩腿打開 ${t.leg}° 或以上。`;

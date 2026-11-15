@@ -36,8 +36,8 @@ const SCENARIOS = {
   // 5 下到位深蹲 + 1 下四分一蹲 → 5
   squat: {
     setup: { players: 1, ex: 'squat', mode: 'free' },
-    seq: solo([['sq_stand', 0, LEAD], ...cyc(5, 'sq_bottom', 'sq_stand', 1.3), ['sq_quarter', 0, 1.3], ['sq_stand', 0, 40]]),
-    wait: 16, check: (s) => s[0] === 5,
+    seq: solo([['sq_stand', 0, LEAD], ...cyc(5, 'sq_bottom', 'sq_stand', 1.3), ['sq_quarter', 0, 1.3], ['sq_stand', 0, 2], ...cyc(2, 'knee_high', 'sq_stand', 1.3), ['sq_stand', 0, 40]]),
+    wait: 16, settle: 12, check: (s) => s[0] === 5,
   },
   // 雙人：畫面左邊的人 5 下、右邊的人 3 下（另加四分一蹲不計）。鏡像後：相片左邊 = 畫面右邊玩家
   squat2p: {
@@ -109,10 +109,10 @@ for (const [name, sc] of Object.entries(SCENARIOS)) {
       const final = seen.at(-1);
       // 計數只可以每次加 1，而且穩定在預期數值
       const steps = seen.slice(1).every((s, i) => s.every((v, k) => v - seen[i][k] === 0 || v - seen[i][k] === 1));
-      await p.waitForTimeout(3000);
+      await p.waitForTimeout((sc.settle ?? 3) * 1000);
       const later = (await read()).slice(0, sc.setup.players);
       ok = sc.check(final) && steps && sc.check(later);
-      detail = `計數 ${JSON.stringify(final)}（3 秒後 ${JSON.stringify(later)}）`;
+      detail = `計數 ${JSON.stringify(final)}（${sc.settle ?? 3} 秒後 ${JSON.stringify(later)}）`;
     }
     const ext = external.size ? `；有連去外部：${[...external].join(', ')}` : '；無連去其他網站';
     console.log(`${ok ? '通過' : '失敗'}  ${name}：${detail}${ext}`);
